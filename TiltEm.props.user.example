@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TEMPLATE - copy to TiltEm.props.user and edit KSPBT_GameRoot.
+  *.user in .gitignore) - keep it personal and out of version control.
+
+  KSPBuildTools auto-imports it via $(SolutionDir)$(SolutionName).props.user and
+  uses KSPBT_GameRoot to resolve KSP's managed assemblies (KSP_x64_Data/Managed)
+  plus any GameData/ ModReference paths. Point it at the KSP install you build
+  against.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <KSPBT_GameRoot>C:\KSP</KSPBT_GameRoot>
+  </PropertyGroup>
+</Project>

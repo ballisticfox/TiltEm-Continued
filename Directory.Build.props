@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+    KSPBuildTools locates its user-local configuration at
+    $(SolutionDir)$(SolutionName).props.user. Neither variable is set when a
+    project is built on its own (`dotnet build TiltEm/TiltEm.csproj`, or an
+    editor's LSP tooling building a single project), so pin sensible fallbacks
+    here. Building the .sln overrides both with the real values.
+  -->
+  <PropertyGroup>
+    <SolutionDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildThisFileDirectory)</SolutionDir>
+    <SolutionName Condition=" '$(SolutionName)' == '' ">TiltEm</SolutionName>
+  </PropertyGroup>
+
+  <!-- Shared across both projects -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Deterministic>true</Deterministic>
+    <IsPackable>false</IsPackable>
+
+    <!-- AssemblyInfo.cs is hand-maintained; don't let the SDK generate a duplicate -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- KSPAssembly/KSPAssemblyDependency attributes live in AssemblyInfo.cs -->
+    <KSPBT_GenerateAssemblyAttribute>false</KSPBT_GenerateAssemblyAttribute>
+    <KSPBT_GenerateDependencyAttributes>false</KSPBT_GenerateDependencyAttributes>
+
+    <!-- Resources/TiltEm.version is hand-maintained in AVC's nested format,
+         which JsonPoke's flat output would clobber. -->
+    <KSPBT_GenerateVersionFile>false</KSPBT_GenerateVersionFile>
+
+    <!-- CKAN is not part of this toolchain; dependencies come from the local KSP install -->
+    <KSPBT_InstallCKANDependencies>false</KSPBT_InstallCKANDependencies>
+
+    <!-- Both assemblies ship in the same GameData folder -->
+    <KSPBT_ModRoot>$(MSBuildThisFileDirectory)GameData/TiltEm</KSPBT_ModRoot>
+    <KSPBT_ModPluginFolder>Plugins</KSPBT_ModPluginFolder>
+  </PropertyGroup>
+
+</Project>

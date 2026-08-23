@@ -12,3 +12,4 @@ TiltEmKopernicus/obj/*
 *.nupkg
 .idea
 .DotSettings
+GameData/
