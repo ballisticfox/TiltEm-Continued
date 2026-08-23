@@ -13,3 +13,5 @@ TiltEmKopernicus/obj/*
 .idea
 .DotSettings
 GameData/
+Docs/verification/bin/
+Docs/verification/obj/

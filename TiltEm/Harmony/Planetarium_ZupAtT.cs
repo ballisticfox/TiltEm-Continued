@@ -1,13 +1,22 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 
 // ReSharper disable All
 
 namespace TiltEm.Harmony
 {
     /// <summary>
-    /// This harmony patch is intended to apply the tilt when getting the Zup frame
-    /// This method is called by Orbit.GetOrbitalStateVectorsAtTrueAnomaly, that's called by Orbit.UpdateFromUT and that method is called by the OrbitDriver.updateFromParameters
-    /// If you don't patch this method, the orbits of the UNLOADED vessels and the planets will be drawn correctly but the vessel/planet in map view will be displaced.
+    /// Applies the tilt when the planetarium frame is asked for at an arbitrary time.
+    ///
+    /// This is called by Orbit.GetOrbitalStateVectorsAtTrueAnomaly, which Orbit.UpdateFromUT
+    /// and therefore OrbitDriver.updateFromParameters go through. Without it, orbits of
+    /// unloaded vessels and planets draw correctly but the bodies themselves sit in the wrong
+    /// place on the map.
+    ///
+    /// Critically, it must agree with the static Planetarium.Zup that CBUpdate writes. Those
+    /// two used to disagree by the whole tilt for the duration of a transition tick - Zup was
+    /// still untilted while this returned a tilted frame - so position code that read one and
+    /// orbit code that read the other landed a vessel in two different places. Both now come
+    /// from the same TiltEmFrames.Zup call over the same anchor, so they cannot drift apart.
     /// </summary>
     [HarmonyPatch(typeof(Planetarium))]
     [HarmonyPatch("ZupAtT")]
@@ -16,19 +25,16 @@ namespace TiltEm.Harmony
         [HarmonyPrefix]
         private static bool PrefixZupAtT(double UT, CelestialBody body, ref Planetarium.CelestialFrame tempZup)
         {
-            if (body != null && body.inverseRotation && TiltEm.TryGetTilt(body.bodyName, out var tilt))
+
+            if (body == null || !body.inverseRotation || !TiltEm.TryGetTilt(body.bodyName, out var tilt))
             {
-                var rotationAngle = (body.initialRotation + 360 * body.rotPeriodRecip * UT) % 360;
-                var inverseRotAngle = (rotationAngle - body.directRotAngle) % 360;
-
-                Planetarium.CelestialFrame.PlanetaryFrame(0, 90, inverseRotAngle, ref tempZup);
-
-                TiltEmUtil.ApplyTiltToFrame(ref tempZup, tilt);
-
-                return false;
+                return true;
             }
 
-            return true;
+            var rotationAngle = TiltEm.RotationAngleAt(body, UT);
+
+            tempZup = TiltEmFrames.Zup(TiltEm.ZupAnchor, tilt, rotationAngle - TiltEm.ZupAnchorRotationAngle);
+            return false;
         }
     }
 }

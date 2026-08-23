@@ -1,0 +1,275 @@
+﻿# Tilt'Em — Reference Frame Defect Inventory
+
+Analysis of why Tilt'Em fails to perform a correct reference-frame switch at
+`CelestialBody.inverseRotThresholdAltitude` (100 km on Kerbin), and the tracked
+list of defects to fix.
+
+All figures below are for Kerbin with the stock Tilt'Em tilt of `(20, 0, 5)`
+Euler degrees — a 20.609° obliquity — evaluated at the threshold radius
+(600 km + 100 km = 700 km).
+
+Cross-references: `KSP-Source` = decompiled KSP 1.12.5 assemblies.
+
+---
+
+## 1. Background: why stock KSP never jumps
+
+`Planetarium.CelestialFrame.PlanetaryFrame(0, 90, rot)` is **exactly `Rz(rot)`** —
+a pure spin about world +Z. The pole is *always* +Z, so obliquity is structurally
+inexpressible through that call. This is the constraint the whole mod has to work
+around.
+
+Stock keeps two angles coupled by one invariant (`CelestialBody.CBUpdate`):
+
+```
+rotationAngle  ==  directRotAngle + InverseRotAngle     (mod 360)
+```
+
+| mode | `Zup` | `BodyFrame` |
+|---|---|---|
+| inertial (`!inverseRotation`) | `Rz(IRA)`, IRA frozen | `Rz(dra)`, `dra = rotationAngle - IRA` advances |
+| rotating (`inverseRotation`) | `Rz(IRA)`, `IRA = rotationAngle - dra` advances | `Rz(dra)`, dra frozen |
+
+The switch only changes *which variable is held fixed*. At the transition instant
+both `dra` and `IRA` are numerically unchanged, so **both frames are literally
+identical before and after**. Continuity is free — and it holds for *any*
+frame-generating function, which is the key to the fix.
+
+## 2. What Tilt'Em does instead
+
+It makes the tilt **conditional on the mode**, and puts it on a different object in
+each (`Harmony/CelestialBody_CBUpdate.cs`):
+
+| mode | `BodyFrame` | `Planetarium.Zup` |
+|---|---|---|
+| inertial | `E(Rotation*tilt) . Rz(dra)` | `Rz(IRA)` — untilted |
+| rotating | `Rz(dra)` — untilted | `E(tilt) . Rz(IRA)` |
+
+`TiltEmUtil.ApplyWorldRotation` reduces to plain left-multiplication
+(`q . q^-1 . E . q = E . q`), and `QuaternionD.swizzle` is an order-preserving
+quaternion homomorphism, so `ApplyTiltToFrame(f, t)` left-multiplies the z-up frame
+by `swizzle(Quaternion.Euler(t))`.
+
+**The astronomy is very nearly right.** Sky-in-planet-frame works out to
+`Rz(-rotationAngle) . T^T . v` in *both* modes, so seasons and subsolar latitude are
+consistent. The `Planetarium.Rotation * tilt` term is a deliberate stand-in for the
+conjugation `Rz(-IRA) . T . Rz(IRA)`, accurate to <= 2.7°. That is not the problem.
+
+**The world-space discontinuity is the problem.** At the threshold the planet snaps
+by `T_P^T` and the sky snaps by `T^T` — 20.609° for Kerbin. Relative geometry
+survives; **the physics scene does not come along.** Every rigidbody stays exactly
+where it was while the terrain rotates 20.6° beneath it — about 215 km of ground
+track at Kerbin's surface.
+
+---
+
+## 3. Defect register
+
+### Category A — reference-frame structure
+
+| ID | Defect | Impact |
+|---|---|---|
+| **A1** | Tilt placement is mode-conditional: carried by `BodyFrame` when inertial, by `Zup` when rotating. | The rendered universe rotates 20.6° at every threshold crossing while the physics scene stays put. Root cause of A2-A4. |
+| **A2** | Two disagreeing `Zup` sources during the transition FixedUpdate. `Planetarium.Zup` (static field, written only by `CBUpdate`) is still untilted; `Planetarium.ZupAtT` (patched, keyed on `body.inverseRotation`, already `true`) returns the tilted frame. | `TiltEm.RotatingFrameChanged` reads *both*, one line apart. Order-independent: even if `Planetarium.FixedUpdate` ran first, it ran with `inverseRotation == false`, whose branch never writes `Zup`. |
+| **A3** | `ApplyTiltToFrame(ref orbit.OrbitFrame, -tilt)` cannot satisfy both paths in A2. It compensates `SetPosition` (0.8-2.6°, 9-31 km) and then **doubles up** on `updateFromParameters`. | Orbit state ends 20.6° / ~250 km off target; the next FixedUpdate teleports the packed craft there. |
+| **A4** | Asymmetric handling — downward crossing is compensated, upward is not. | The source comment *"Somehow it's not needed when going from inverse rotation to normal rotation"* is real but misattributed: upward works only because `RestorePlanetariumTilt()` untilts `Zup` in the **prefix**, before anything reads it, so both paths agree by luck. |
+| **A5** | Tilt expressed as `Quaternion.Euler`, which cannot represent a pole cleanly. `Euler(-t) != Euler(t)^-1` (1.736° for Kerbin); `Euler(R*v) != R . Euler(v) . R^-1` (<= 2.7°). | Residual error in both directions even when everything else is right. |
+| **A6** | `Zup` in rotating mode is `T . Rz(IRA)` (left-multiplied), which revolves the sky about world Z, not about the body's pole. | Only "works" because the mod untilts the planet in that mode — which is precisely what forces A1. |
+| **A7** | Dominant-body change between bodies with different tilts is unhandled. | `Zup` would jump by up to `tilt_a + tilt_b` (~39° for Kerbin to Mun), re-interpreting every stored `OrbitFrame` in the game. |
+| **A8** | *(found in-game after the first fix attempt)* `directRotAngle = rotationAngle - InverseRotAngle` bakes a **global** scalar into every body's own spin angle. Stock survives this only because all bodies share the +Z spin axis, so the `-IRA` on the body and the `+IRA` on `Zup` cancel. With a real pole they do not: `Rz(dra)` spins about the body's own pole and can never move it, while `Zup` turns the sky about a different axis. | Every tilted body's obliquity is wrong by a rotation of `InverseRotAngle` about +Z, and drifts as `IRA` changes. Observed on Mars in the Sol pack at `IRA = 180.1`: sub-solar latitude read **+44.4°** instead of **−23.83°** — season inverted, north pole leaning sunward in midsummer south. |
+
+### Category B — physics quantities never tilted
+
+| ID | Defect | Impact |
+|---|---|---|
+| **B1** | `angularVelocity` / `zUpAngularVelocity` deliberately left on the untilted axis (`CelestialBody_CBUpdate.cs`, commented out with *"Do not touch those values"*). | Correct *below* the threshold (planet is drawn untilted there), wrong *above* it. |
+| **B2** | `setRotatingFrame`'s `rFrmVel = Cross(angularVelocity, pos - center)` therefore applies a wrong velocity step at the crossing. | \|applied\| 204.10 m/s vs \|correct\| 203.32 m/s, error vector **70.75 m/s**. |
+| **B3** | Same axis error corrupts `Vessel.srf_velocity` and `east = mainBody.getRFrmVel(CoM).normalized`. | Navball heading ~20° off above the threshold, snapping correct below it. |
+| **B4** | The transition never rotates loaded rigidbody *velocities*, only positions. | Velocity is inconsistent with the re-oriented world even where position is patched. |
+
+### Category C — transition-handler defects
+
+| ID | Defect | Impact |
+|---|---|---|
+| **C1** | Only `TRACK_Phys` vessels are patched. Packed craft in the same physics bubble follow `Zup` by the full 20.6°; the active vessel does not. | Docked/nearby craft separate at the threshold. |
+| **C2** | `vessel.SetPosition(orbit.getPositionAtUT(...), false)` is handed a **CoM** position but sets the **root transform**; stock's `updateFromParameters` subtracts `driverTransform.rotation * localCoM`. | Vessel shifted by its own root-to-CoM offset. |
+| **C3** | `OrbitPhysicsManager.HoldVesselUnpack(1)` expires in the same FixedUpdate — `releaseUnpackIn` is decremented right after `checkReferenceFrame`. | Craft unpacks 1-2 frames later, immediately after the bad teleport. |
+| **C4** | `data.host` dereferenced unguarded in `BeforeRotatingFrameChanged` / `RotatingFrameChanged`. | NRE risk. |
+
+### Category D — precision and stock fidelity
+
+| ID | Defect | Impact |
+|---|---|---|
+| **D1** | `TiltEmUtil.ApplyWorldRotation` takes a **float** `Quaternion`; the frame quaternion is truncated to single precision on every `CBUpdate` and never renormalized. | Worst-case truncation 4.23e-8, giving 0.05 m at Kerbin's surface, 7 m at SOI edge, **1.15 km at Kerbin's solar orbit, 5.8 km at Jool's** — re-rolled every frame. |
+| **D2** | The replacement `CBUpdate` drops stock's first two lines: `transformRight` / `transformUp` are never set. | Both are consumed by `TransferMath`. |
+| **D3** | `9.80665` hardcoded instead of `PhysicsGlobals.GravitationalAcceleration`. | Diverges from stock under Kopernicus/RSS configs. |
+
+### Category F — initialisation and lifecycle
+
+| ID | Defect | Impact |
+|---|---|---|
+| **F1** | *(introduced by the A8 fix)* `Planetarium.Zup` is a **static field with no initialiser**, so it is a zero matrix until the first `Planetarium.Awake`. `CBUpdate` runs well before that — Kopernicus's `OrbitLoader` and several stock systems call it directly during system construction — and the pole-based `BodyFrame` composes `transpose(Zup)`. Stock's `CBUpdate` never reads `Zup`, so it never had to guard against this. | Every surface feature maps to the body's centre on the first scene load, throwing the KSC far from the floating origin and causing single-precision artifacts. Self-corrects after any scene change, once `Zup` is real. |
+| **F2** | *(pre-existing, exposed by F1)* The scene-change handler guarded on `data.from < SPACECENTER \|\| data.to < SPACECENTER`. `MAINMENU (2)` fails the first clause, so the main-menu-to-space-centre transition was silently skipped. | The planetarium anchor was never established on the very first scene entry. |
+| **F3** | *(introduced by the A8 fix; the actual cause of the floating-origin bug)* Stock's `CBUpdate` **does not write `BodyFrame`, `rotation`, or `bodyTransform.rotation` at all** while a body is inverse-rotating — the body is frozen literally, by omission, wherever it was pointing, and `Planetarium.Zup` absorbs the difference. The pole-based version recomputes the frame every tick; it is constant in time, but its constant value is fixed by the latched anchor. Latching `ZupAnchor = Planetarium.Zup` makes it `transpose(Zup) · T · Rz(rot)`, which equals where the body already is only if `Zup` and `BodyFrame` were last written in the same tick. `PSystemSetup.SetSpaceCentre` flips the home body to `inverseRotation` and then takes `FloatingOrigin.SetOffset(scTransform.position)` — and `scTransform` hangs off the body transform. The last `CBUpdate` before that ran at UT 0 inside `PSystemSetup.SetupSystem`, because `Planetarium.FixedUpdate` only steps its bodies when unpaused and `SetSpaceCentre` is what unpauses it. | The body swings from its UT-0 orientation to the save's on the next `FixedUpdate`, dragging the KSC out from under an origin that had already been fixed — up to ~1200 km at Kerbin's surface. Self-corrects after a scene change, when the two writes fall in the same tick. |
+
+### Category G — camera framing
+
+| # | Defect | Consequence |
+|---|--------|-------------|
+| **G1** | The map / tracking-station camera cancels the rotating frame with `Quaternion.AngleAxis(camHdg + (float)Planetarium.InverseRotAngle, Vector3.up)`. That scalar-about-`+Z` cancellation is only correct because stock's `Zup` is always a plain spin about celestial `+Z`. | The map camera drifts and jitters whenever *any* craft is below *any* body's `inverseRotThresholdAltitude` — including a body you are not looking at. |
+| **G2** | The same camera takes celestial `+Z` as up. | A tilted planet is shown leaning by its obliquity instead of upright. |
+| **G3** | `FlightGlobals.getFoR` has **no case for `FoRModes.OBT_ABS`** — it falls through to `default: return Quaternion.identity`. `FlightCamera` uses that as `pivot.rotation = frameOfReference * AngleAxis(camHdg, Vector3.up) * ...`, so the in-flight Orbital camera's up is Unity `+Y`, i.e. celestial `+Z`, and `camHdg` orbits about that axis. | The orbital camera hangs off an axis unrelated to the planet: the horizon sits at the obliquity angle, and swinging the camera traces a cone about the wrong axis rather than a latitude circle. |
+| **G4** | `FlightGlobals.getFoR`'s `SRF_NORTH` case — the **Free and Auto** in-flight cameras — builds `LookRotation(AngleAxis(90, cross(Vector3.up, FoRupAxis)) * -FoRupAxis, FoRupAxis)`. The cross product is meant to be the local **east**, which it only is when the axis crossed against the local vertical is the body's actual spin axis. | The camera's "north" leans off true north by an amount that varies across the surface — a median of **34°** on Mars, and it **fully inverts** (180°) in some bands, which is the flipping seen in flight. |
+
+### Category H — anchor lifecycle
+
+| # | Defect | Consequence |
+|---|--------|-------------|
+| **H1** | *(introduced by the pole-based rewrite)* The planetarium anchor was latched on entry to the rotating frame and **never released** — `EnsureZupAnchor` early-returns while `ZupAnchorBody` still names the body, and only a scene change cleared it. While the body is inertial nothing writes `Zup`, so it sits frozen, but the body keeps turning. Re-entry then evaluates `Zup` at `elapsed = rotationAngle - ZupAnchorRotationAngle`, grown by the whole arc. | On any orbit that crosses the threshold repeatedly, `Zup` snaps forward by the body's entire rotation during the coast, and every on-rails vessel jumps with it — measured at **237 km** for a 20-minute arc at Kerbin. Strictly one-directional: inertial→rotating jumps, rotating→inertial is clean, because leaving the frame only freezes `Zup`. Affects untilted bodies too, since stock keeps `directRotAngle` updated right through the arc and so has nothing stale to resume. |
+
+### Category E — mod interactions
+
+| ID | Defect | Impact |
+|---|---|---|
+| **E1** | Kopernicus's `OrbitPhysicsManager_setDominantBody` prefix clears `outgoing.inverseRotation = false` directly, bypassing `setRotatingFrame`. | Neither Tilt'Em event fires; `Zup` is left tilted while the mod believes it is inertial. |
+
+---
+
+## 4. Chosen remedy
+
+Stop toggling. Stock's continuity holds for *any* frame-generating function, so
+express obliquity as an IAU-style **pole** and use the same construction in both
+modes:
+
+```
+T                  := PlanetaryFrame(poleRA, poleDec, 0)      // constant per body
+LocalBodyFrame(rot):= PlanetaryFrame(poleRA, poleDec, rot)    //  == T . Rz(rot)
+
+BodyFrame(rot)     := transpose(Zup) . LocalBodyFrame(rot)
+Zup(elapsed)       := T . Rz(elapsed) . transpose(T) . ZupAnchor
+```
+
+where `rot` is the body's own absolute spin angle (`rotationAngle`, **not**
+`directRotAngle`) and `elapsed` is how far the rotating body has turned since it
+took the rotating frame.
+
+Two details matter and were both got wrong on the first attempt (A8):
+
+- `BodyFrame` must compose `transpose(Zup)`. KSP's world frame is not inertial —
+  while a body holds the rotating frame, `Zup` turns the whole sky. Undoing that
+  turn makes sky-in-body reduce to `transpose(LocalBodyFrame) . v`, so `Zup`
+  cancels completely and each body's orientation depends only on its own rotation
+  and its own pole. It still collapses to stock's `Rz(rotationAngle - IRA)` when
+  the tilt is identity.
+- The anchor multiplies on the **right**, not the left. That falls out of
+  requiring the rotating body's world frame to stay frozen, which is the entire
+  purpose of the rotating frame.
+
+Because a tilted rotating body makes `Zup` non-planar for everyone, the patch has
+to handle **every** body, not only tilted ones. Untilted bodies still reduce to
+stock exactly, since with an identity tilt the two expressions agree whenever
+`Zup` is a plain spin.
+
+`SetFrame` already supports an arbitrary pole
+(`Z = (sinA*sinB, -cosA*sinB, cosB)`), so this is the formulation KSP already has.
+`ZupAnchor` / `AnchorIRA` are latched when a body enters its rotating frame, which
+makes the sky revolve about the body's *tilted* pole (fixing A6) and keeps `Zup`
+continuous across dominant-body changes (fixing A7 and, incidentally, E1).
+
+Properties this buys:
+
+- **Exact continuity at the threshold in both directions**, by construction — no
+  `OrbitFrame` poking, no teleport, so the whole `BeforeRotatingFrameChanged` /
+  `RotatingFrameChanged` machinery and both `Restore*Tilt` helpers are deleted
+  (A1-A4, C1-C4).
+- **Bit-exact stock behaviour when no tilt is configured** — `T` collapses to
+  identity and `Zup(IRA)` collapses to `Rz(IRA)`.
+- Sky-in-body reduces to a single expression **identical in both modes**, so the
+  `Planetarium.Rotation * tilt` approximation disappears (A5).
+- `angularVelocity` can then be derived from `BodyFrame.Z` — correct in both modes
+  and reducing exactly to stock's `Vector3d.down * omega` when untilted (B1-B3).
+
+---
+
+## 5. Status
+
+All 19 defects are fixed. Verification lives in `Docs/verification/`, a standalone
+console harness that **compiles the shipped `TiltEm/TiltEmFrames.cs` verbatim** and
+links it against the real KSP 1.12.5 assemblies, so the assertions exercise
+production code and production types rather than a re-implementation. Run it with:
+
+```
+dotnet run --project Docs/verification/TiltEmVerify.csproj
+```
+
+It needs `TiltEm.props.user` in the repository root — the same gitignored file the
+mod itself builds against. Copy `TiltEm.props.user.example` and point
+`KSPBT_GameRoot` at your KSP install; the harness resolves the managed assemblies
+from it and passes the path to itself via `RunArguments`, so there is no path
+hardcoded anywhere in `Docs/`. Without it the build stops with a message saying so,
+rather than failing to resolve `Planetarium` a hundred times over.
+
+Current result: **109 checks, 109 passed**.
+
+The first version of this harness only ever simulated a **single body**, and with
+one body there is nothing for the planetarium frame to desynchronise against —
+every check passed just as happily with the A8 defect present. `SystemChecks`
+now runs eleven differently-tilted bodies with a nonzero, advancing
+`InverseRotAngle`, and includes a deliberate regression witness that replays the
+pre-fix formula and requires it to **fail** (it drifts by 1.918 in unit-vector
+terms, i.e. fully inverted). A check that cannot fail proves nothing.
+
+| ID | Status | Verified by |
+|---|---|---|
+| A1 | fixed | `CrossingIsContinuous` — tilt adds 0 deg of extra Zup rotation at the crossing, both directions |
+| A2 | fixed | `CrossingIsContinuous` — 0 deg extra BodyFrame rotation; `Zup` and `ZupAtT` now share one function |
+| A3 | fixed | `CrossingIsContinuous` — on-rails vessel moves 3.968 m, identical to an ordinary tick (was ~250 km) |
+| A4 | fixed | `CrossingIsContinuous` — ground moves 2.227 m, identical to stock (was ~215 km); symmetric both ways |
+| A5 | fixed | `PoleFactorsOutOfPlanetaryFrame`, `LegacyBodyFrameIsReproducedExactly` — exact to 1e-15 |
+| A6 | fixed | `BothModesAgreeOnTheSky` — modes agree to 1e-15; body-frame declination constant over a full day |
+| A7 | fixed | `DominantBodyChangeKeepsZupContinuous`, `HandoverBetweenTiltedBodiesIsContinuous` — Mars→Phobos handover moves no body's sky (5.6e-17) |
+| A8 | fixed | `SkyOrientationIsIndependentOfTheRotatingBody` — 4.4e-16 over a full day, with an untilted *and* a tilted body driving Zup; `ObliquityIsStableWhileTheRotatingBodySpins` — Mars's sub-solar latitude drifts 1.8e-14 deg instead of inverting |
+| B1 | fixed | `AngularVelocityTracksThePole` — axis is the pole in both modes; untilted is bit-identical to stock |
+| B2 | fixed | `AngularVelocityMatchesActualSurfaceMotion` — matches differentiated surface motion to 3.5e-07% |
+| B3 | fixed | `NavballBasisIsConsistentWithTheTiltedPlanet` — east ⟂ up and ⟂ pole to 1e-16 across the globe |
+| B4 | fixed | `AngularVelocityTracksThePole` — angular velocity continuous across the crossing (0 rad/s) |
+| C1 | fixed | `TransitionMachineryIsGone` — the selective `TRACK_Phys` loop is deleted |
+| C2 | fixed | `TransitionMachineryIsGone` — no `SetPosition` call remains |
+| C3 | fixed | `TransitionMachineryIsGone` — no `HoldVesselUnpack` / `GoOnRails` call remains |
+| C4 | fixed | `TransitionMachineryIsGone` — the handlers that dereferenced `data.host` are deleted |
+| D1 | fixed | `DoublePrecisionRetained` + `FrameMathIsFloatFree` — orthonormal to 4.9e-16 over 20k steps, no float |
+| D2 | fixed | `CbUpdateRestoresStockFidelity` — `transformRight` / `transformUp` restored |
+| D3 | fixed | `CbUpdateRestoresStockFidelity` — `PhysicsGlobals.GravitationalAcceleration`, no hardcoded constant |
+| E1 | fixed | `DominantBodyChangeKeepsZupContinuous` — anchor re-latches when `setRotatingFrame` never fires |
+| F1 | fixed | `LifecycleChecks` — `BodyFrame` falls back to the body's own frame for a zero/NaN/non-unit `Zup`, with a witness showing the unguarded composition collapses to zero |
+| F2 | fixed | guard now tests only `data.to`, so entry from the main menu resets the anchor |
+| F3 | fixed | `TiltEmFrames.AnchorFor` derives the anchor from the body's current frame, `anchor = T · Rz(rot + pm) · transpose(current)`, the unique anchor that leaves the body where it is. `LifecycleChecks` asserts it is a no-op on a consistent frame (so the threshold crossing is unaffected), that the latch cannot move the body across 40 stale/tilt/angle combinations, that the sky takes up the difference as a spin about the body's **own pole** so the season is preserved, and that the freeze still holds afterwards — with a witness measuring the ~1200 km swing the old latch produced |
+| G1 | fixed | `PlanetariumCamera_LateUpdate` composes `Planetarium.Rotation` itself, which *is* the celestial-to-world map, so the sky cancels exactly whatever shape `Zup` has taken. Reduces to stock identically when `Zup` is `Rz(IRA)` |
+| G2 | fixed | the map camera's up is the focused body's pole in the **celestial** frame (`TiltEm.CelestialNorth`), verified by `CameraChecks` to be unmoved by a rotating frame that shifts the world pole by 0.62 over the same sweep |
+| G3 | fixed | `FlightGlobals_GetFoR` rebases `OBT_ABS` onto the body's pole in the **world** frame (`TiltEm.WorldNorth`). `CameraChecks` asserts it is exactly Unity up on an untilted install, invariant under the body's own spin, and leans by exactly the obliquity — plus a witness showing an *untilted* body's world pole leans 68.3° while a tilted body holds the rotating frame, which is why the pole must come from `BodyFrame` and not from the tilt |
+| G4 | fixed | the same patch rebuilds the `SRF_NORTH` frame with `cross(north, up)` in place of `cross(Vector3.up, FoRupAxis)`; only the forward vector changes, since the up axis is the local vertical and already pole-independent. `CameraChecks` sweeps 5184 pole/vertical pairs and asserts the identity `AngleAxis(90, cross(pole, up)) * -up == normalize(pole - (pole·up)up)` holds to 5.5e-15, with a witness showing the celestial axis inverts north (dot -0.999) somewhere in the same sweep |
+| H1 | fixed | `TiltEm.ReleaseZupAnchor`, called from `CBUpdate`'s inertial branch so it covers every route including Kopernicus's direct clearing (E1). `TransitionChecks` runs rotating→inertial→rotating for a tilted and an untilted body and asserts the re-entry tick moves the vessel no further than an ordinary tick, with a witness measuring the 237 km / 202 km jump a stale anchor produces |
+
+### Note on what "continuous" means
+
+Per-tick *motion* legitimately changes character at the switch — that is the whole
+point of the reference-frame flip: the ground stops moving and the sky starts. So
+the checks assert two separate things. First, that the tilt adds no rotation the
+untilted case does not also have (measured as an axis-independent angle, since a
+one-tick rotation about a tilted pole displaces basis vectors differently than one
+about +Z while being the same angle). Second, that the tick on which the mode flips
+takes no step larger than an ordinary tick in either mode.
+
+### Known residuals
+
+Two small artifacts remain, both inherited from stock rather than introduced here:
+
+- **Update-order lag.** KSP walks the body tree from the root, so any body updated
+  before the rotating one uses the previous tick's `Zup`. Worst case measured at the
+  real physics rate is **0.21 arcsec**, against a ceiling of one tick of the
+  rotating body's rotation (0.30 arcsec). Stock carries the identical lag through a
+  stale `InverseRotAngle`.
+- **Angle-measurement conditioning.** `acos((trace-1)/2)` has a noise floor around
+  5e-10 deg near zero, which is why `Harness.FrameRotationAngle` inverts through the
+  Frobenius norm instead.
+

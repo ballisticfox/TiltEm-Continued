@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Standalone verification harness for Tilt'Em's reference-frame math.
+
+    It compiles the *shipped* TiltEm source files verbatim and links them against the
+    real KSP assemblies, so the assertions exercise production code and production
+    types (Planetarium.CelestialFrame, Vector3d, QuaternionD) rather than a
+    re-implementation. Nothing here touches Unity's native entry points, so it runs
+    outside the game.
+
+    Deliberately not part of TiltEm.sln - run it directly:
+        dotnet run (with the "project" option) on this csproj
+  -->
+
+  <Import Project="$(MSBuildThisFileDirectory)../../TiltEm.props.user"
+          Condition="Exists('$(MSBuildThisFileDirectory)../../TiltEm.props.user')" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>TiltEmVerify</AssemblyName>
+    <RootNamespace>TiltEm.Verification</RootNamespace>
+    <KSPManagedPath>$(KSPBT_GameRoot)\KSP_x64_Data\Managed</KSPManagedPath>
+
+    <!--
+      Hand the resolved path to the harness so `dotnet run` needs no arguments and
+      cannot disagree with what the references were compiled against.
+    -->
+    <RunArguments>"$(KSPManagedPath)"</RunArguments>
+  </PropertyGroup>
+
+  <!--
+    KSPBT_GameRoot comes from TiltEm.props.user, imported above. There is deliberately
+    no fallback: a hardcoded default would only ever be one machine's path, and it
+    would turn a missing config into a wall of unresolved-type errors from the four
+    references below instead of saying what is actually wrong.
+  -->
+  <Target Name="ValidateKspManagedPath" BeforeTargets="BeforeBuild">
+    <Error Condition=" '$(KSPBT_GameRoot)' == '' "
+           Text="KSPBT_GameRoot is not set. Copy TiltEm.props.user.example to TiltEm.props.user in the repository root and point KSPBT_GameRoot at your KSP install." />
+    <Error Condition="!Exists('$(KSPManagedPath)')"
+           Text="KSP managed assemblies not found at '$(KSPManagedPath)'. Check KSPBT_GameRoot in TiltEm.props.user (currently '$(KSPBT_GameRoot)')." />
+  </Target>
+
+  <!-- Production code under test, compiled from its real location -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/TiltEmFrames.cs">
+      <Link>production/TiltEmFrames.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(KSPManagedPath)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(KSPManagedPath)\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(KSPManagedPath)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(KSPManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

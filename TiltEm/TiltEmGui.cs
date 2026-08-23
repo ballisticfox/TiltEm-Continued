@@ -222,8 +222,6 @@ namespace TiltEm
                 //Yeah... Really, they can't spell "debug"
                 ObtPhysMgr.degub = false;
             }
-            
-            TiltEm.GoOnRailsOnRotatingFrameChange = GUILayout.Toggle(TiltEm.GoOnRailsOnRotatingFrameChange, "Go on rails on rotating frame change");
         }
 
         private static void DrawDebugAndActionButtons()

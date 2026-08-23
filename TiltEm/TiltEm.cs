@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using TiltEm.Event;
 using UnityEngine;
-using AccessTools = HarmonyLib.AccessTools;
 
 namespace TiltEm
 {
@@ -16,20 +15,17 @@ namespace TiltEm
         public static TiltEm Singleton;
         public static HarmonyLib.Harmony HarmonyInstance = new HarmonyLib.Harmony("TiltEm");
 
-        private static readonly MethodInfo UpdateFromParameters = AccessTools.Method(typeof(OrbitDriver), "updateFromParameters", new[] { typeof(bool) });
-
-        public static bool GoOnRailsOnRotatingFrameChange { get; set; } = true;
-
 #if DEBUG
         public static bool[] DebugSwitches { get; } = new bool[10];
         public static Action[] DebugActions { get; } = new Action[10];
 #endif
 
         /// <summary>
-        /// Here we define the default tilts in case you don't use Kopernicus
+        /// Default tilts, used when you don't run Kopernicus. These are in the legacy Euler
+        /// format the mod originally shipped with and are converted to poles on load, so the
+        /// numbers stay comparable with older versions and with hand-written TiltEm.cfg files.
         /// </summary>
-
-        public static readonly Dictionary<string, Vector3d> TiltDictionary = new Dictionary<string, Vector3d>
+        private static readonly Dictionary<string, Vector3d> DefaultLegacyTilts = new Dictionary<string, Vector3d>
         {
             ["Sun"] = new Vector3d(7.57, 0, 2.12),
             ["Kerbin"] = new Vector3d(20, 0, 5),
@@ -50,6 +46,161 @@ namespace TiltEm
             ["Eeloo"] = new Vector3d(80.63, 0, 12.34),
         };
 
+        private static readonly Dictionary<string, BodyTilt> TiltDictionary = BuildDefaultTilts();
+
+        private static Dictionary<string, BodyTilt> BuildDefaultTilts()
+        {
+            var tilts = new Dictionary<string, BodyTilt>(DefaultLegacyTilts.Count);
+            foreach (var entry in DefaultLegacyTilts)
+            {
+                tilts[entry.Key] = TiltEmFrames.FromLegacyEuler(entry.Value);
+            }
+
+            return tilts;
+        }
+
+        #endregion
+
+        #region Planetarium anchor
+
+        /// <summary>
+        /// The planetarium frame captured when the current body entered its rotating frame,
+        /// together with the inverse rotation angle at that moment.
+        ///
+        /// <see cref="TiltEmFrames.Zup"/> rotates away from this anchor rather than rebuilding
+        /// the frame from scratch, which is what makes the threshold crossing continuous: at the
+        /// instant of the switch the elapsed angle is zero, so Zup is exactly the value it
+        /// already had. Re-anchoring on each entry also keeps Zup continuous when the dominant
+        /// body changes to one with a different pole.
+        /// </summary>
+        //Initialised to identity rather than left as default(CelestialFrame), which is a zero
+        //matrix and would poison every frame built from it before the first latch.
+        public static Planetarium.CelestialFrame ZupAnchor { get; private set; } = TiltEmFrames.Identity;
+
+        /// <summary>The anchoring body's spin angle when it took the rotating frame.</summary>
+        public static double ZupAnchorRotationAngle { get; private set; }
+
+        public static CelestialBody ZupAnchorBody { get; private set; }
+
+        /// <summary>
+        /// The body's absolute spin phase at <paramref name="ut"/>, matching stock's formula.
+        /// Computed from rotationPeriod rather than rotPeriodRecip so it is valid even before
+        /// the body's first CBUpdate has run.
+        /// </summary>
+        public static double RotationAngleAt(CelestialBody body, double ut)
+        {
+            if (body.rotationPeriod == 0) return body.initialRotation % 360;
+            return (body.initialRotation + 360 * (1 / body.rotationPeriod) * ut) % 360;
+        }
+
+        /// <summary>
+        /// Latches the anchor to the body now entering its rotating frame. Idempotent, so it is
+        /// safe to call both from the setRotatingFrame prefix and defensively from CBUpdate.
+        ///
+        /// The defensive call matters: Kopernicus clears inverseRotation directly in its
+        /// setDominantBody patch without going through setRotatingFrame, so the prefix does not
+        /// always fire.
+        ///
+        /// The anchor is derived from the body's current world frame rather than from
+        /// Planetarium.Zup, so that taking the rotating frame cannot move the body - see
+        /// <see cref="TiltEmFrames.AnchorFor"/>. Anything that has already measured the body's
+        /// orientation, FloatingOrigin.SetOffset above all, stays valid.
+        /// </summary>
+        public static void EnsureZupAnchor(CelestialBody body, BodyTilt tilt)
+        {
+            if (ReferenceEquals(ZupAnchorBody, body)) return;
+
+            //body.rotationAngle, not the angle at the current UT: the anchor has to describe the
+            //frame the body is actually in, and BodyFrame was last written at that angle. In
+            //CBUpdate the two differ by one tick, and pairing the new angle with the old frame is
+            //what pins the body in place while the sky takes up the tick - which is exactly what
+            //stock does by leaving BodyFrame alone and letting InverseRotAngle advance.
+            ZupAnchor = TiltEmFrames.AnchorFor(tilt, body.rotationAngle, body.BodyFrame, Planetarium.Zup);
+            ZupAnchorRotationAngle = body.rotationAngle;
+            ZupAnchorBody = body;
+        }
+
+        /// <summary>
+        /// Drops the anchor when a body leaves its rotating frame, so the next entry latches
+        /// afresh rather than resuming an anchor from a previous stretch.
+        ///
+        /// Without this the anchor survives the whole inertial arc while Zup sits frozen - no
+        /// body is rotating, so nothing writes it - and the body keeps turning. Re-entry then
+        /// evaluates Zup at elapsed = rotationAngle - ZupAnchorRotationAngle, which has grown by
+        /// the body's entire rotation during the arc, and Zup snaps forward by that whole amount
+        /// in one tick. Everything positioned through Zup - which is every vessel on rails, via
+        /// Orbit.getRelativePositionAtUT - jumps with it. On Kerbin, twenty minutes above the
+        /// threshold is 20 degrees of rotation, so a craft at 700 km moves about 240 km.
+        ///
+        /// It is one-directional, which is why the symptom was: inertial to rotating jumps,
+        /// rotating to inertial is clean. Leaving the rotating frame only freezes Zup, and
+        /// freezing something is always continuous.
+        ///
+        /// Called from CBUpdate rather than from the setRotatingFrame postfix because that is
+        /// the one path every route goes through: Kopernicus clears inverseRotation directly in
+        /// its setDominantBody patch (E1), and PSystemSetup clears it on every scene change.
+        /// The ReferenceEquals guard makes it idempotent and order-independent, so a
+        /// dominant-body handover cannot release the incoming body's fresh anchor.
+        /// </summary>
+        public static void ReleaseZupAnchor(CelestialBody body)
+        {
+            if (!ReferenceEquals(ZupAnchorBody, body)) return;
+
+            ZupAnchorBody = null;
+        }
+
+        /// <summary>
+        /// Drops the anchor so the next rotating body re-latches. Required on scene changes,
+        /// because Planetarium.Awake rebuilds Zup - an anchor captured against the previous
+        /// scene's frame would no longer mean anything.
+        /// </summary>
+        public static void ResetZupAnchor()
+        {
+            ZupAnchorBody = null;
+            ZupAnchorRotationAngle = 0;
+            ZupAnchor = TiltEmFrames.OrIdentity(Planetarium.Zup);
+        }
+
+        #endregion
+
+        #region Body axes
+
+        /// <summary>
+        /// The body's north pole as a direction in the <em>celestial</em> frame, Unity-swizzled.
+        ///
+        /// This is the pole as the sky sees it: constant, unaffected by which body currently
+        /// holds the rotating frame. Use it wherever the sky has been cancelled separately -
+        /// the map camera composes Planetarium.Rotation itself, so feeding it a world pole
+        /// would apply Zup twice.
+        /// </summary>
+        public static Vector3 CelestialNorth(CelestialBody body)
+        {
+
+            if (body == null || !TryGetTilt(body.bodyName, out var tilt)) return Vector3.up;
+
+            return tilt.Tilt.Z.xzy;
+        }
+
+        /// <summary>
+        /// The body's north pole as a direction in <em>world</em> space, Unity-swizzled.
+        ///
+        /// This is the pole where things actually are, which is what anything positioning a
+        /// transform wants. It is deliberately taken from BodyFrame rather than from the tilt,
+        /// because BodyFrame already carries transpose(Zup): while some body holds the rotating
+        /// frame the whole sky is turned, and even an untilted body's pole is then not world up.
+        ///
+        /// Equivalent to -angularVelocity.normalized for a body that rotates, but defined for
+        /// one that does not.
+        /// </summary>
+        public static Vector3 WorldNorth(CelestialBody body)
+        {
+            //Before the body's first CBUpdate its frame is still all zeros; Z would be a zero
+            //vector and every FromToRotation built from it garbage.
+            if (body == null || !TiltEmFrames.IsUsableRotation(body.BodyFrame)) return Vector3.up;
+
+            return body.BodyFrame.Z.xzy;
+        }
+
         #endregion
 
         #region Unity methods
@@ -67,16 +218,13 @@ namespace TiltEm
             TiltEmBaseEvent.Awake();
             HarmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
             GameEvents.onGameSceneSwitchRequested.Add(SceneRequested);
-            GameEvents.onVesselChange.Add(OnVesselChange);
-            GameEvents.onRotatingFrameTransition.Add(RotatingFrameChanged);
-            RotatingFrameEvents.beforeRotatingFrameChange.Add(BeforeRotatingFrameChanged);
 
 #if DEBUG
             GameEvents.onGUIApplicationLauncherReady.Add(EnableToolBar);
             DefineDebugActions();
 #endif
         }
-        
+
 #if DEBUG
 
         /// <summary>
@@ -115,117 +263,19 @@ namespace TiltEm
 #endif
 
         /// <summary>
-        /// When switching to inverse rotation (below 100K on Kerbin) we must restore the planet tilt to 0 as then the planetarium will be tilted in <see cref="Harmony.CelestialBody_CBUpdate"/>.
-        /// When switching to NON inverse rotation (above 100K on Kerbin) we must restore the planetarium tilt and then the planet will be tilted in <see cref="Harmony.CelestialBody_CBUpdate"/>.
-        ///
-        /// Also we must adjust the orbits of the loaded vessels to match the new tilt only if they are going to inverse rotation.
-        /// Somehow it's not needed when going from inverse rotation to normal rotation
-        /// </summary>
-        // ReSharper disable once MemberCanBeMadeStatic.Local
-        private void BeforeRotatingFrameChanged(GameEvents.HostTargetAction<CelestialBody, bool> data)
-        {
-            if (data.host && data.target)
-            {
-                TiltEmUtil.RestorePlanetTilt(data.host);
-            }
-            else
-            {
-                TiltEmUtil.RestorePlanetariumTilt();
-            }
-
-            //Only fix the orbit frame when going to inverse rotation (below 100k in Kerbin and body.inverseRotation = true)
-            if (data.target && TryGetTilt(data.host.bodyName, out var tilt))
-            {
-                foreach (var vessel in FlightGlobals.VesselsLoaded)
-                {
-                    if (vessel.mainBody == data.host && vessel.orbitDriver.updateMode == OrbitDriver.UpdateMode.TRACK_Phys)
-                    {
-                        TiltEmUtil.ApplyTiltToFrame(ref vessel.orbit.OrbitFrame, -tilt);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Here we adjust position and velocity of the vessels that are in track physics
-        /// </summary>
-        // ReSharper disable once MemberCanBeMadeStatic.Local
-        private void RotatingFrameChanged(GameEvents.HostTargetAction<CelestialBody, bool> data)
-        {
-            if (TryGetTilt(data.host.bodyName, out _))
-            {
-                foreach (var vessel in FlightGlobals.VesselsLoaded)
-                {
-                    if (vessel.mainBody == data.host && vessel.orbitDriver.updateMode == OrbitDriver.UpdateMode.TRACK_Phys)
-                    {
-                        if (GoOnRailsOnRotatingFrameChange)
-                        {
-                            vessel.GoOnRails();
-                            OrbitPhysicsManager.HoldVesselUnpack(1);
-                            vessel.SetPosition(vessel.orbit.getPositionAtUT(Planetarium.GetUniversalTime()), false);
-                            UpdateFromParameters.Invoke(vessel.orbitDriver, new object[] { false });
-                        }
-                        else
-                        {
-                            if (!data.target) //NOT rotating frame (vessel is now above 100k in Kerbin and body.inverseRotation = false)
-                            {
-                                vessel.IgnoreGForces(20);
-
-                                vessel.orbit.UpdateFromUT(Planetarium.GetUniversalTime());
-
-                                vessel.SetPosition(vessel.orbit.getPositionAtUT(Planetarium.GetUniversalTime()), false);
-                                vessel.SetWorldVelocity(vessel.orbit.GetVel() - Krakensbane.GetFrameVelocity());
-                            }
-                            else //IN rotating frame (vessel is now below 100k in Kerbin and body.inverseRotation = true)
-                            {
-                                vessel.IgnoreGForces(20);
-
-                                vessel.orbit.UpdateFromUT(Planetarium.GetUniversalTime());
-                                vessel.SetPosition(vessel.orbit.getPositionAtUT(Planetarium.GetUniversalTime()), false);
-
-                                //TODO: Find a way to adjust the velocity that works
-                                vessel.SetWorldVelocity(vessel.orbit.GetWorldSpaceVel() - Krakensbane.GetFrameVelocity());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// When loading a scene that doesn't have a main body we rotate the bodies.
-        /// Otherwise if the scene has a main body and we are rotating, we rotate the planetarium instead
+        /// The planetarium is rebuilt across scene loads, so the anchor it was captured against
+        /// no longer applies. Nothing else needs doing here: the tilt is baked into the frames
+        /// themselves now, so there is no per-scene tilt shuffling to perform.
         /// </summary>
         // ReSharper disable once MemberCanBeMadeStatic.Local
         private void SceneRequested(GameEvents.FromToAction<GameScenes, GameScenes> data)
         {
-            if (data.from < GameScenes.SPACECENTER || data.to < GameScenes.SPACECENTER) return;
+            //Only the destination matters. The old guard also required the *source* to be a
+            //real scene, which silently skipped the main-menu to space-centre transition - so on
+            //the very first load the anchor was never established.
+            if (data.to < GameScenes.SPACECENTER) return;
 
-            if (FlightGlobals.currentMainBody && FlightGlobals.currentMainBody.inverseRotation)
-            {
-                TiltEmUtil.RestorePlanetTilt(FlightGlobals.currentMainBody);
-            }
-            else
-            {
-                TiltEmUtil.RestorePlanetariumTilt();
-            }
-        }
-
-        /// <summary>
-        /// When loading a vessel that doesn't have a main body or that is not in inverse rotation we rotate the bodies.
-        /// Otherwise if the vessel has a main body and is rotating we rotate the planetarium
-        /// </summary>
-        // ReSharper disable once MemberCanBeMadeStatic.Local
-        private void OnVesselChange(Vessel vessel)
-        {
-            if (vessel.mainBody && vessel.mainBody.inverseRotation)
-            {
-                TiltEmUtil.RestorePlanetTilt(vessel.mainBody);
-            }
-            else
-            {
-                TiltEmUtil.RestorePlanetariumTilt();
-            }
+            ResetZupAnchor();
         }
 
         #endregion
@@ -233,10 +283,27 @@ namespace TiltEm
         #region Public accessors
 
         /// <summary>
-        /// Adds the tilt of the body into the system.
+        /// Adds a tilt in the legacy Unity Euler format.
         /// Feel free to call this method from another mod.
         /// </summary>
         public static void AddTiltData(CelestialBody body, Vector3d tilt)
+        {
+            AddTiltData(body, TiltEmFrames.FromLegacyEuler(tilt));
+        }
+
+        /// <summary>
+        /// Adds a tilt as an IAU-style pole direction, which is the preferred form.
+        /// Feel free to call this method from another mod.
+        /// </summary>
+        public static void AddTiltData(CelestialBody body, double poleRa, double poleDec)
+        {
+            AddTiltData(body, TiltEmFrames.FromPole(poleRa, poleDec));
+        }
+
+        /// <summary>
+        /// Adds an already-built tilt.
+        /// </summary>
+        public static void AddTiltData(CelestialBody body, BodyTilt tilt)
         {
             if (body == null)
             {
@@ -244,28 +311,23 @@ namespace TiltEm
                 return;
             }
 
-            if (TiltDictionary.ContainsKey(body.bodyName))
-            {
-                TiltDictionary[body.bodyName] = tilt;
-            }
-            else
-            {
-                TiltDictionary.Add(body.bodyName, tilt);
-            }
+            TiltDictionary[body.bodyName] = tilt;
         }
 
         /// <summary>
-        /// Gets the tilt magnitude to display it in a UI for a given body name
+        /// Gets the obliquity to display it in a UI for a given body name
         /// </summary>
         public static string GetTiltForDisplay(string bodyName)
         {
-            return !TiltDictionary.TryGetValue(bodyName, out var tilt) ? "0" : KSPUtil.LocalizeNumber(tilt.magnitude, "F2");
+            return !TiltDictionary.TryGetValue(bodyName, out var tilt)
+                ? "0"
+                : KSPUtil.LocalizeNumber(tilt.Obliquity, "F2");
         }
 
         /// <summary>
         /// Returns the given tilt if found in the storage
         /// </summary>
-        public static bool TryGetTilt(string bodyName, out Vector3d tilt)
+        public static bool TryGetTilt(string bodyName, out BodyTilt tilt)
         {
             return TiltDictionary.TryGetValue(bodyName, out tilt);
         }
@@ -296,6 +358,5 @@ namespace TiltEm
 #endif
 
         #endregion
-
     }
 }
