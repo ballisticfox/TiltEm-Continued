@@ -336,6 +336,29 @@ namespace TiltEm
         }
 
         /// <summary>
+        /// The inverse of <see cref="ToCelestialElements"/>: takes the celestial-frame elements
+        /// KSP stores and re-expresses them against the parent's equator.
+        ///
+        /// This is the direction the readouts want. The config side converts once, at load, so
+        /// the game can go on storing ordinary celestial elements; a display has the opposite
+        /// problem, holding a live orbit that is already celestial and needing to show the player
+        /// the number they would have written. Undoing the parent's tilt instead of applying it
+        /// is the whole difference:
+        ///
+        ///     local = transpose(T) * OrbitalFrame(celestial)
+        ///
+        /// Round-trips with <see cref="ToCelestialElements"/> to within decomposition error, and
+        /// is exactly identity for an untilted parent, so an untilted install shows stock's own
+        /// numbers untouched rather than numbers that merely round to them.
+        /// </summary>
+        public static OrbitElements ToLocalElements(BodyTilt parentTilt, OrbitElements celestial)
+        {
+            if (parentTilt.IsIdentity) return celestial;
+
+            return DecomposeOrbitalFrame(Multiply(parentTilt.TiltTranspose, OrbitalFrame(celestial)));
+        }
+
+        /// <summary>
         /// The inverse of <see cref="OrbitalFrame"/>: recovers LAN, inclination and argument of
         /// periapsis from a frame. Reading straight off the ZXZ generator in
         /// Planetarium.CelestialFrame.SetFrame, whose columns are
@@ -350,9 +373,23 @@ namespace TiltEm
             OrbitElements elements;
 
             var cosInc = Clamp(frame.Z.z, -1.0, 1.0);
-            var sinInc = Math.Sqrt(Math.Max(0.0, 1.0 - cosInc * cosInc));
 
-            elements.Inclination = Math.Acos(cosInc) * Rad2Deg;
+            //From the Z column's own length in the equatorial plane, not from
+            //sqrt(1 - cos^2). The two are equal in exact arithmetic and behave completely
+            //differently near the degeneracy: at inclination 180 the subtraction cancels to
+            //nothing, so a frame whose Z is (1e-16, 1e-16, -1) - which is what any product of
+            //frames produces - reports sinInc around 2e-8 instead of 1e-16. That is above the
+            //equatorial threshold below, so the near-degenerate frame takes the general branch
+            //and recovers the node from atan2 of two pure-noise components. The result is a
+            //random longitude of the ascending node, and it is not self-cancelling: for a
+            //retrograde equatorial orbit only LAN - argPe is determined, and the noise splits
+            //it wrongly, moving the plane by tens of degrees.
+            var sinInc = Math.Sqrt(frame.Z.x * frame.Z.x + frame.Z.y * frame.Z.y);
+
+            //atan2, not acos, for the same reason: acos loses half its significant digits as
+            //its argument approaches +/-1, so an exactly polar frame comes back as 179.999999
+            //rather than 180.
+            elements.Inclination = Math.Atan2(sinInc, cosInc) * Rad2Deg;
 
             if (sinInc > 1e-12)
             {

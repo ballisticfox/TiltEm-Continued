@@ -23,6 +23,85 @@ namespace TiltEm.Verification
             FrameMathIsFloatFree();
             CamerasUseTheRightPole();
             ParentRelativeOrbitsAreWiredCorrectly();
+            ElementReadoutsAreWiredCorrectly();
+            TheAnchoredZupIsKeyedToItsOwnBody();
+        }
+
+        /// <summary>
+        /// K1. TeleportChecks shows what an anchor from the wrong body does - 839 km of it - but
+        /// only by suppressing the re-anchor inside the simulation. The shipped hole was in
+        /// ZupAtT, which took the caller's body and the global anchor and combined them without
+        /// checking they referred to the same body, so this pins the fix.
+        /// </summary>
+        private static void TheAnchoredZupIsKeyedToItsOwnBody()
+        {
+            var zupAtT = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Planetarium_ZupAtT.cs")));
+
+            Present("K1", "ZupAtT resolves the body that owns the anchor", zupAtT,
+                @"TiltEm\.ZupAnchorBody");
+
+            //The elapsed rotation has to come from the anchor's body, since that is the rotation
+            //Zup is actually following. Advancing the caller's instead is the 839 km failure.
+            Present("K1", "and advances that body's rotation, not the caller's", zupAtT,
+                @"RotationAngleAt\(anchorBody,");
+            Absent("K1", "the caller's own rotation is not used to advance Zup", zupAtT,
+                @"RotationAngleAt\(body,");
+        }
+
+        /// <summary>
+        /// J1. DisplayChecks proves the conversion both ways; these pin the two call sites to it,
+        /// because the failure mode is subtle in a way the maths cannot catch.
+        ///
+        /// The readout and the input have to use OPPOSITE directions of the same conversion. Both
+        /// signatures take a tilt and a set of elements and return a set of elements, so swapping
+        /// them compiles and runs and produces plausible-looking numbers - it just doubles the
+        /// obliquity instead of removing it, and only on a tilted body. Pinning each site to the
+        /// direction it needs is the cheapest way to keep that from coming back.
+        /// </summary>
+        private static void ElementReadoutsAreWiredCorrectly()
+        {
+            var shared = StripComments(Read(Path.Combine("TiltEm", "ParentRelativeOrbit.cs")));
+
+            //A readout holds a celestial orbit and needs the parent-relative numbers, so it
+            //takes the tilt off; an input holds what the player typed and needs it put on.
+            Present("J1", "the readout helper converts out of the celestial frame", shared,
+                @"TiltEmFrames\.ToLocalElements\(");
+            Present("J1", "the input helper converts into it", shared,
+                @"TiltEmFrames\.ToCelestialElements\(");
+
+            //Both directions return false for an untilted parent, which is what keeps a stock
+            //install bit-identical rather than merely indistinguishable.
+            Present("J1", "an untilted parent short-circuits the readout", shared,
+                @"return !tilt\.IsIdentity");
+            Present("J1", "and the input", shared, @"tilt\.IsIdentity\) return false");
+
+            var editor = StripComments(Read(Path.Combine("TiltEm", "Harmony",
+                "ManeuverNodeEditorTabOrbitAdv_UpdateUIElements.cs")));
+
+            Present("J1", "the maneuver editor patch reads the parent-relative elements", editor,
+                @"ParentRelativeOrbit\.TryGetLocalElements\(");
+            Absent("J1", "the maneuver editor patch does not convert the wrong way", editor,
+                @"TryGetCelestialElements");
+
+            //Read rather than re-derived: if the patch picked its own orbit it could end up
+            //relabelling numbers that describe a different one than stock just printed.
+            Present("J1", "it corrects the orbit stock actually displayed", editor,
+                @"FieldRefAccess<ManeuverNodeEditorTabOrbitAdv, Orbit>\(""orbitToDisplay""\)");
+
+            var setOrbit = StripComments(Read(Path.Combine("TiltEm", "Harmony",
+                "FlightGlobals_SetShipOrbit.cs")));
+
+            Present("J1", "the Set Orbit patch converts the entered elements", setOrbit,
+                @"ParentRelativeOrbit\.TryGetCelestialElements\(");
+            Absent("J1", "the Set Orbit patch does not convert the wrong way", setOrbit,
+                @"TryGetLocalElements");
+
+            //Only the three orientation elements change frame. Rewriting the shape or the
+            //position along the orbit would move the craft somewhere it was not asked to go.
+            Present("J1", "it rewrites the three orientation elements", setOrbit,
+                @"ref double inc, ref double LAN, ref double argPe");
+            Absent("J1", "and leaves shape and position alone", setOrbit,
+                @"ref double (ecc|sma|mna|ObT)");
         }
 
         /// <summary>

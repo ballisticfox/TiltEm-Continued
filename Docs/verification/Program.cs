@@ -59,6 +59,12 @@ namespace TiltEm.Verification
             Harness.Section("Camera framing (G2, G3)");
             CameraChecks.Run();
 
+            Harness.Section("Parent-relative element readouts (J1)");
+            DisplayChecks.Run();
+
+            Harness.Section("Debug-menu teleports (K1)");
+            TeleportChecks.Run();
+
             var root = SourceChecks.FindRepoRoot();
             Harness.Section("Shipped sources (C1-C4, D1-D3) - " + root);
             SourceChecks.Run(root);

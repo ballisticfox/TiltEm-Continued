@@ -93,9 +93,17 @@ namespace TiltEm.Verification
         /// </summary>
         public bool KeepStaleAnchor;
 
+        /// <summary>
+        /// When set, the anchor is never re-latched, so a body taking the rotating frame builds
+        /// Zup out of whatever anchor happens to be lying around - including one belonging to a
+        /// different body. Used to prove the re-anchor is load-bearing.
+        /// </summary>
+        public bool SuppressReanchor;
+
         /// <summary>Mirrors TiltEm.EnsureZupAnchor.</summary>
         private void EnsureZupAnchor(SimBody body)
         {
+            if (SuppressReanchor) return;
             if (_zupAnchorBody == body.Name) return;
 
             ZupAnchor = UseLegacyFormula
@@ -113,6 +121,35 @@ namespace TiltEm.Verification
             if (_zupAnchorBody != body.Name) return;
 
             _zupAnchorBody = null;
+        }
+
+        /// <summary>
+        /// Mirrors FlightGlobals.clearInverseRotation, which every teleport goes through via
+        /// PrepForOrbitSet.
+        ///
+        /// Note what it does NOT do: it writes inverseRotation directly on every body and never
+        /// calls CBUpdate, so nothing downstream of the flag is recomputed and, in the mod's
+        /// case, ReleaseZupAnchor never runs. The anchor therefore survives into whatever the
+        /// teleport does next - which, for a teleport to a surface, is re-entering the rotating
+        /// frame later in the same frame. That is the sequence these checks exist to replay.
+        /// </summary>
+        public void ClearInverseRotation(IEnumerable<SimBody> bodies)
+        {
+            foreach (var body in bodies) body.InverseRotation = false;
+        }
+
+        /// <summary>
+        /// Mirrors OrbitPhysicsManager.setRotatingFrame together with the mod's prefix on it:
+        /// the flag is written, and entering the frame latches the anchor.
+        ///
+        /// Also called out of band, without a tick either side, which is the whole point - stock
+        /// reaches it from PostOrbitSet -> CheckReferenceFrame during the teleport itself.
+        /// </summary>
+        public void SetRotatingFrame(SimBody body, bool rotating)
+        {
+            body.InverseRotation = rotating;
+
+            if (rotating) EnsureZupAnchor(body);
         }
 
         /// <summary>

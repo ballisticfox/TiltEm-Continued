@@ -17,6 +17,15 @@ namespace TiltEm.Harmony
     /// still untilted while this returned a tilted frame - so position code that read one and
     /// orbit code that read the other landed a vessel in two different places. Both now come
     /// from the same TiltEmFrames.Zup call over the same anchor, so they cannot drift apart.
+    ///
+    /// Which is why the frame is built from the ANCHOR's body rather than from the body passed
+    /// in. There is only one Planetarium.Zup, and what it is doing is decided entirely by
+    /// whichever body currently holds the rotating frame - so evaluating it at some other time
+    /// means advancing THAT body's rotation, not this one's. The two are normally the same body
+    /// and the distinction never arises; when they are not, using the caller's rotation against
+    /// another body's anchor produces a frame with no relation to the live Zup, and every vessel
+    /// positioned through it lands somewhere arbitrary. Measured at 839 km for a Kerbin anchor
+    /// used with the Mun's rotation - see TeleportChecks.
     /// </summary>
     [HarmonyPatch(typeof(Planetarium))]
     [HarmonyPatch("ZupAtT")]
@@ -26,12 +35,19 @@ namespace TiltEm.Harmony
         private static bool PrefixZupAtT(double UT, CelestialBody body, ref Planetarium.CelestialFrame tempZup)
         {
 
-            if (body == null || !body.inverseRotation || !TiltEm.TryGetTilt(body.bodyName, out var tilt))
-            {
-                return true;
-            }
+            if (body == null || !body.inverseRotation) return true;
 
-            var rotationAngle = TiltEm.RotationAngleAt(body, UT);
+            //Before the first latch there is no anchor to speak for, so the caller's own body is
+            //the best available guess - and it is what the anchor is about to be latched to.
+            var anchorBody = TiltEm.ZupAnchorBody;
+            if (anchorBody == null) anchorBody = body;
+
+            //An untilted anchor body still falls through to stock, whose Rz(rot - directRotAngle)
+            //is provably the same frame in that case. Leaving it there keeps the untilted path
+            //bit-identical to stock rather than merely equal to it.
+            if (!TiltEm.TryGetTilt(anchorBody.bodyName, out var tilt)) return true;
+
+            var rotationAngle = TiltEm.RotationAngleAt(anchorBody, UT);
 
             tempZup = TiltEmFrames.Zup(TiltEm.ZupAnchor, tilt, rotationAngle - TiltEm.ZupAnchorRotationAngle);
             return false;

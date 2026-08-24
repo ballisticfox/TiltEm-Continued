@@ -136,6 +136,20 @@ track at Kerbin's surface.
 | **I1** | *(feature, not a defect)* `Orbit { relativeToParent = true }` interprets a body's `inclination`, `LAN` and `argumentOfPeriapsis` in its **parent's equatorial frame** rather than the celestial frame KSP stores them in. | KSP measures every orbit against the celestial equator, which suits a real system and fights a made-up one: "in my planet's equatorial plane" is what a modder means, and the celestial-frame numbers expressing it are neither round nor stable under a change to the parent's pole. |
 | **I2** | *(feature, not a defect)* `Properties { tiltRelativeToParent = true }` reads a body's tilt as a lean from its **parent's equator** rather than from the celestial equator. | A gas giant leans 23° and its moons lean half a degree from *its* equator. Writing that by hand means adding the two together as poles for every moon, and redoing all of them whenever the giant's tilt is adjusted. |
 
+### Category J — element readouts
+
+| # | Item | Rationale |
+|---|------|-----------|
+| **J1** | *(feature, plus one defect it exposed)* The maneuver node editor's *Orbit (advanced)* tab and the debug menu's *Set Orbit* screen both work in the celestial frame. Both now work in the **parent's equatorial frame**. | Stock reads the three orientation elements straight off the orbit and prints them, and reads them straight back in. On a tilted body that is not the frame the player is flying in: a perfectly equatorial orbit around a 26° planet reports 26° of inclination, and typing `0` into Set Orbit around Eve drops the craft 35° out of the plane it asked for. The two halves are a matched pair — `ToLocalElements` on the way out, `ToCelestialElements` on the way in — so an orbit entered as inclination zero reads back as inclination zero. Eccentricity, SMA and the anomalies are untouched; none of them describe the plane. The ejection angle is left alone too, being measured from the parent's prograde direction rather than from any equator. |
+| **J1a** | `DecomposeOrbitalFrame` measured inclination as `acos(Z.z)` and detected the equatorial degeneracy with `sqrt(1 - cos²)`. Both lose their significance exactly where it is needed. | A frame that arrives as a **product** rather than as literal elements carries ≈1e-16 of rounding, which `sqrt(1 - cos²)` inflates to ≈2e-8 — above the degeneracy threshold. A retrograde-equatorial orbit therefore took the general branch and recovered its ascending node from `atan2` of two pure-noise components. Since only `LAN - argPe` is determined in that configuration, the noise split it wrongly and **flipped the orbital plane by up to 180°**. Fixed by taking `sinInc` from the Z column's own equatorial length and the inclination from `atan2(sinInc, cosInc)`. Pre-existing: it reached I1's config path too, so a moon written as `inclination = 180` with `relativeToParent` landed in the wrong plane. |
+
+### Category K — debug-menu teleports
+
+| # | Defect | Consequence |
+|---|--------|-------------|
+| **K1** | `Planetarium.ZupAtT` built its frame from the **caller's** body and the **global** anchor without checking the two referred to the same body. There is only one `Planetarium.Zup`, and what it does is decided by whichever body holds the rotating frame — so advancing the caller's rotation against another body's anchor produces a frame unrelated to the live `Zup`. | Every vessel positioned through it — which is every vessel on rails, via `Orbit.GetOrbitalStateVectorsAtTrueAnomaly` — lands somewhere arbitrary. Measured at **839 km** for a Kerbin anchor advanced by the Mun's rotation. Fixed by resolving `TiltEm.ZupAnchorBody` and advancing *that* body. |
+| — | *(investigated, not a defect)* `FlightGlobals.PrepForOrbitSet` calls `clearInverseRotation()`, which writes `inverseRotation = false` on every body **without** going through `CBUpdate` — so `ReleaseZupAnchor` never runs — and then `PostOrbitSet` re-enters the rotating frame later in the *same frame*, with `FloatingOrigin.SetOffset` already taken. A teleport therefore resumes an anchor minutes old, and pins the origin before the frame is re-entered. | Benign, but only because `AnchorFor` derives the anchor from the body's current `BodyFrame` rather than capturing `Zup`: re-entry is a no-op by construction. Replayed in `TeleportChecks` for all four destinations (same surface, orbit→surface, body→body, surface→orbit); the ground moves **&lt;2e-10 m**. Left documented rather than "fixed" because there is nothing to fix — but it is one `AnchorFor` change away from being an F3-shaped failure, so it is pinned. |
+
 ### Category E — mod interactions
 
 | ID | Defect | Impact |
@@ -202,7 +216,7 @@ Properties this buys:
 
 ## 5. Status
 
-All 19 defects are fixed. Verification lives in `Docs/verification/`, a standalone
+All 22 defects are fixed. Verification lives in `Docs/verification/`, a standalone
 console harness that **compiles the shipped `TiltEm/TiltEmFrames.cs` verbatim** and
 links it against the real KSP 1.12.5 assemblies, so the assertions exercise
 production code and production types rather than a re-implementation. Run it with:
@@ -218,7 +232,7 @@ from it and passes the path to itself via `RunArguments`, so there is no path
 hardcoded anywhere in `Docs/`. Without it the build stops with a message saying so,
 rather than failing to resolve `Planetarium` a hundred times over.
 
-Current result: **158 checks, 158 passed**.
+Current result: **187 checks, 187 passed**.
 
 The first version of this harness only ever simulated a **single body**, and with
 one body there is nothing for the planetarium frame to desynchronise against —
