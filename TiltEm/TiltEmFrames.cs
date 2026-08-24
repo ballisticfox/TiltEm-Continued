@@ -271,6 +271,148 @@ namespace TiltEm
             return Multiply(local, Transpose(current));
         }
 
+
+        #endregion
+
+        #region Orbital elements
+
+        /// <summary>
+        /// KSP's three orientation elements, in degrees. Eccentricity, semi-major axis and the
+        /// anomalies describe the shape and the position along the orbit rather than the plane it
+        /// lies in, so none of them are touched by a change of reference frame.
+        /// </summary>
+        public struct OrbitElements
+        {
+            public double Inclination;
+            public double LongitudeOfAscendingNode;
+            public double ArgumentOfPeriapsis;
+        }
+
+        /// <summary>
+        /// The orbit's orientation as a frame, exactly as Orbit.Init builds it. Same generator as
+        /// every other frame here: OrbitalFrame(LAN, inc, argPe) is SetFrame(LAN, inc, argPe) and
+        /// PlanetaryFrame(ra, dec, rot) is SetFrame(ra - 90, dec - 90, rot + 90), so the two
+        /// compose directly.
+        /// </summary>
+        public static Planetarium.CelestialFrame OrbitalFrame(OrbitElements elements)
+        {
+            var frame = default(Planetarium.CelestialFrame);
+            Planetarium.CelestialFrame.OrbitalFrame(elements.LongitudeOfAscendingNode, elements.Inclination,
+                elements.ArgumentOfPeriapsis, ref frame);
+
+            return frame;
+        }
+
+        /// <summary>
+        /// Re-expresses elements written against the parent's equator as the celestial-frame
+        /// elements KSP actually stores.
+        ///
+        /// KSP measures every orbit against the celestial equator, which is what you want for a
+        /// real system - the IAU publishes real orbits that way - and is a nuisance for a made-up
+        /// one, where "in my planet's equatorial plane" is the thing you actually mean and the
+        /// numbers that express it are not round. Interpreting the elements in the parent's own
+        /// frame instead just means composing the parent's tilt onto the orbit frame:
+        ///
+        ///     celestial = T * OrbitalFrame(local)
+        ///
+        /// and reading the elements back off the result. An inclination of zero then puts the
+        /// orbit exactly in the parent's equatorial plane whatever the parent's pole is doing,
+        /// and a nonzero one is measured from that plane.
+        ///
+        /// T is the pole alone - PlanetaryFrame(ra, dec, 0), with no prime meridian - so the
+        /// reference direction the longitude of the ascending node is measured from is inertial.
+        /// Folding the prime meridian in would tie the orbit to where the parent's surface
+        /// happens to have its longitude zero, which has nothing to do with orbits.
+        ///
+        /// Exactly identity for an untilted parent, which is what makes this safe to leave on.
+        /// </summary>
+        public static OrbitElements ToCelestialElements(BodyTilt parentTilt, OrbitElements local)
+        {
+            //Not merely an optimisation: it keeps the elements bit-identical rather than
+            //round-tripped through a decomposition that need not reproduce them exactly.
+            if (parentTilt.IsIdentity) return local;
+
+            return DecomposeOrbitalFrame(Multiply(parentTilt.Tilt, OrbitalFrame(local)));
+        }
+
+        /// <summary>
+        /// The inverse of <see cref="OrbitalFrame"/>: recovers LAN, inclination and argument of
+        /// periapsis from a frame. Reading straight off the ZXZ generator in
+        /// Planetarium.CelestialFrame.SetFrame, whose columns are
+        ///
+        ///     Z = (sin A sin B, -cos A sin B, cos B)
+        ///     X.z = sin B sin C,  Y.z = sin B cos C
+        ///
+        /// with A = LAN, B = inclination, C = argument of periapsis.
+        /// </summary>
+        public static OrbitElements DecomposeOrbitalFrame(Planetarium.CelestialFrame frame)
+        {
+            OrbitElements elements;
+
+            var cosInc = Clamp(frame.Z.z, -1.0, 1.0);
+            var sinInc = Math.Sqrt(Math.Max(0.0, 1.0 - cosInc * cosInc));
+
+            elements.Inclination = Math.Acos(cosInc) * Rad2Deg;
+
+            if (sinInc > 1e-12)
+            {
+                elements.LongitudeOfAscendingNode = Math.Atan2(frame.Z.x, -frame.Z.y) * Rad2Deg;
+                elements.ArgumentOfPeriapsis = Math.Atan2(frame.X.z, frame.Y.z) * Rad2Deg;
+            }
+            else
+            {
+                //Equatorial: there is no ascending node, and only LAN + argPe (or their
+                //difference, retrograde) is determined. Put the whole angle in argPe, which is
+                //the convention KSP's own editors use, and leave the node at zero. Setting
+                //LAN = 0 reduces the frame to Rx(inc) * Rz(argPe), whose X column is
+                //(cos C, sin C cos B, 0), so argPe comes off that.
+                elements.LongitudeOfAscendingNode = 0.0;
+                elements.ArgumentOfPeriapsis = Math.Atan2(frame.X.y * cosInc, frame.X.x) * Rad2Deg;
+            }
+
+            elements.LongitudeOfAscendingNode = NormalizeDegrees(elements.LongitudeOfAscendingNode);
+            elements.ArgumentOfPeriapsis = NormalizeDegrees(elements.ArgumentOfPeriapsis);
+
+            return elements;
+        }
+
+        /// <summary>
+        /// Re-expresses a tilt written against the parent's equator as the celestial-frame tilt
+        /// everything else works in.
+        ///
+        /// The same composition as <see cref="ToCelestialElements"/>, applied to the other half of
+        /// the problem. A gas giant leans 23 degrees; its moons lean half a degree from ITS
+        /// equator, not from the celestial one. Writing that without help means adding the two
+        /// together as poles by hand for every moon, and redoing all of them whenever the giant's
+        /// own tilt is adjusted.
+        ///
+        /// Composing the parent's tilt onto the moon's does that arithmetic instead. A zero tilt
+        /// then puts the moon's pole exactly on the parent's, and a nonzero one leans away from it
+        /// by the angle actually meant.
+        ///
+        /// Only the pole is rebased. The prime meridian rides along untouched, so a legacy
+        /// tiltx/tiltz pair keeps the longitude offset it always had and initialRotation goes on
+        /// meaning what it meant.
+        /// </summary>
+        public static BodyTilt ToCelestialTilt(BodyTilt parent, BodyTilt local)
+        {
+            //Not merely an optimisation, and the same guarantee ToCelestialElements gives: an
+            //untilted parent leaves the tilt bit-identical rather than round-tripped through a
+            //pole decomposition. PlanetaryFrame(0, 90, 0) is only the identity to within a couple
+            //of ulps - it is built out of cos and sin of right angles - so composing with it
+            //would otherwise nudge every moon in a pack that sets the flag everywhere.
+            if (parent.IsIdentity) return local;
+
+            //The local pole carried into the celestial frame. For an untilted local frame this is
+            //the parent's own pole, which is the case the feature exists for.
+            var pole = parent.Tilt.LocalToWorld(local.Tilt.Z);
+
+            var dec = Math.Asin(Clamp(pole.z, -1.0, 1.0)) * Rad2Deg;
+            var ra = Math.Atan2(pole.y, pole.x) * Rad2Deg;
+
+            return FromPole(ra, dec, local.PrimeMeridian);
+        }
+
         #endregion
 
         #region Construction

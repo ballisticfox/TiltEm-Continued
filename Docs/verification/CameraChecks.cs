@@ -33,6 +33,143 @@ namespace TiltEm.Verification
             TheCelestialPoleIgnoresTheSkyEntirely();
             TheTwoPolesReallyDoDiffer();
             SurfaceNorthIsTheBodysNorth();
+            OrbitalPlaneNormalsAreWellFormed();
+            TheUpAxisEaseIsFrameRateIndependent();
+        }
+
+        /// <summary>
+        /// One easing step's remaining fraction. Slerp scales the remaining ANGLE by (1 - step),
+        /// so the whole ease can be reasoned about as a scalar without needing Unity's native
+        /// Vector3.Slerp - which cannot run outside the game.
+        /// </summary>
+        private static double RemainingAfter(double sharpness, double dt)
+        {
+            var step = 1.0 - Math.Exp(-sharpness * dt);
+            return 1.0 - step;
+        }
+
+        /// <summary>Stock's idiom, for comparison: Lerp(a, b, sharpness * deltaTime).</summary>
+        private static double RemainingAfterStockForm(double sharpness, double dt)
+        {
+            var step = Math.Min(1.0, sharpness * dt);
+            return 1.0 - step;
+        }
+
+        /// <summary>
+        /// G6: the map camera's up axis eases with 1 - exp(-k dt), not stock's k * dt.
+        ///
+        /// Both ease. Only the first is frame-rate independent, and the property is exact rather
+        /// than approximate: each step multiplies the remaining angle by exp(-k dt_i), so over a
+        /// fixed wall-clock interval the product is exp(-k * sum(dt_i)) no matter how the
+        /// interval is divided. A camera transition that finishes in a different amount of time
+        /// at 144 fps than at 30 is a real difference in feel, not a rounding detail.
+        /// </summary>
+        private static void TheUpAxisEaseIsFrameRateIndependent()
+        {
+            const double sharpness = 10.0;   // MapNorthSharpness
+            const double total = 0.35;       // a few frames of transition
+
+            var expected = Math.Exp(-sharpness * total);
+            var worst = 0.0;
+
+            // For the stock form, what matters is the SPREAD across the sweep: how differently
+            // the same transition lands depending only on how many frames it was drawn over.
+            var minStock = double.MaxValue;
+            var maxStock = double.MinValue;
+
+            // ONE wall-clock interval, cut into different numbers of frames - 5 steps is ~14 fps,
+            // 200 is ~570. Subdividing by step count rather than by frame rate is what keeps the
+            // elapsed time identical across the sweep; picking a rate and rounding the step count
+            // would compare slightly different intervals and prove nothing.
+            foreach (var steps in new[] { 5, 10, 20, 35, 50, 100, 200 })
+            {
+                var dt = total / steps;
+
+                var remaining = 1.0;
+                var remainingStock = 1.0;
+
+                for (var i = 0; i < steps; i++)
+                {
+                    remaining *= RemainingAfter(sharpness, dt);
+                    remainingStock *= RemainingAfterStockForm(sharpness, dt);
+                }
+
+                worst = Math.Max(worst, Math.Abs(remaining - expected));
+                minStock = Math.Min(minStock, remainingStock);
+                maxStock = Math.Max(maxStock, remainingStock);
+            }
+
+            var stockSpread = maxStock - minStock;
+
+            Harness.CheckWithin("G6", "the ease closes the same fraction however the interval is divided",
+                worst, 1e-12, "abs");
+
+            Harness.Check("G6", "stock's k * dt form would not",
+                stockSpread > 0.01,
+                "the same transition lands " + Harness.Fmt(stockSpread * 100.0)
+                + " percent of the angle apart across the sweep - " + Harness.Fmt(stockSpread * 180.0)
+                + " deg of a 180 deg flip, purely from frame rate");
+
+            // And it actually converges: a transition has to finish, not asymptote visibly.
+            var after = Math.Exp(-sharpness * 0.35) * 180.0;
+            Harness.Check("G6", "a 180 degree switch settles within the snap threshold",
+                after < 10.0,
+                "worst-case flip is down to " + Harness.Fmt(after) + " deg after 0.35 s, "
+                + "and snaps exactly below 0.01 deg");
+        }
+
+        /// <summary>
+        /// G5: the two config forms for a star's orbital plane.
+        ///
+        /// SystemNorth's tree walk needs a live CelestialBody and cannot run here, so what is
+        /// checkable is the part that is pure maths: both forms must produce a genuine unit
+        /// normal, the pole form must place it where the RA/Dec says, and the unset case must
+        /// come out as the celestial pole - which is exactly what makes "no plane configured"
+        /// fall back to the star's own tilt without a special case.
+        /// </summary>
+        private static void OrbitalPlaneNormalsAreWellFormed()
+        {
+            var worstUnit = 0.0;
+            var worstPlaced = 0.0;
+
+            foreach (var ra in new[] { 0.0, 47.5, 190.0, 312.25 })
+            foreach (var dec in new[] { -90.0, -22.0, 0.0, 63.87, 90.0 })
+            {
+                var plane = TiltEmFrames.FromPole(ra, dec);
+                var normal = plane.Tilt.Z;
+
+                worstUnit = Math.Max(worstUnit, Math.Abs(1.0 - normal.magnitude));
+
+                // The pole of PlanetaryFrame(ra, dec, 0) is the direction RA/Dec names.
+                var raRad = ra * Math.PI / 180.0;
+                var decRad = dec * Math.PI / 180.0;
+                var expected = new Vector3d(Math.Cos(decRad) * Math.Cos(raRad),
+                                            Math.Cos(decRad) * Math.Sin(raRad),
+                                            Math.Sin(decRad));
+
+                // Right at the pole the right ascension is degenerate and FromPole pins it to
+                // zero, which moves nothing but the (unused) reference direction.
+                if (Math.Abs(dec) < 89.999)
+                {
+                    worstPlaced = Math.Max(worstPlaced, Harness.MaxComponentError(normal, expected));
+                }
+            }
+
+            Harness.CheckWithin("G5", "an orbital plane normal is a unit vector", worstUnit, 1e-15, "abs");
+            Harness.CheckWithin("G5", "the pole form places the normal where RA/Dec says",
+                worstPlaced, 1e-14, "abs");
+
+            // The legacy Euler form, as used by orbitalPlaneX / orbitalPlaneZ.
+            var legacy = TiltEmFrames.FromLegacyEuler(new Vector3d(7.25, 0, 0));
+            Harness.CheckWithin("G5", "the legacy form's normal is a unit vector",
+                Math.Abs(1.0 - legacy.Tilt.Z.magnitude), 1e-15, "abs");
+            Harness.CheckWithin("G5", "and leans by the angle it was given",
+                Math.Abs(legacy.Obliquity - 7.25), 1e-9, "deg");
+
+            // No plane configured: the fallback path hands back the celestial pole unchanged,
+            // so "unset" and "upright" are the same thing and need no special case.
+            Harness.CheckWithin("G5", "an unset plane is exactly the celestial pole",
+                Harness.MaxComponentError(TiltEmFrames.Untilted.Tilt.Z, new Vector3d(0, 0, 1)), 1e-15, "abs");
         }
 
         /// <summary>

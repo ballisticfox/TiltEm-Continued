@@ -48,6 +48,14 @@ namespace TiltEm
 
         private static readonly Dictionary<string, BodyTilt> TiltDictionary = BuildDefaultTilts();
 
+        /// <summary>
+        /// Per-star orbital plane normals, as poles. Empty by default: a star with no plane
+        /// configured falls back to its own tilt, which is the closest thing to a system plane
+        /// that is already known.
+        /// </summary>
+        private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary =
+            new Dictionary<string, BodyTilt>();
+
         private static Dictionary<string, BodyTilt> BuildDefaultTilts()
         {
             var tilts = new Dictionary<string, BodyTilt>(DefaultLegacyTilts.Count);
@@ -163,6 +171,89 @@ namespace TiltEm
 
         #endregion
 
+        #region Map camera rotation
+
+        /// <summary>
+        /// Which axis the map camera treats as up. Session state, deliberately not saved: it is
+        /// a viewing preference, like the camera distance, not part of the game.
+        /// </summary>
+        public static MapCameraRotation MapRotation { get; private set; } = MapCameraRotation.PoleUp;
+
+        public static void ToggleMapRotation()
+        {
+            MapRotation = MapRotation == MapCameraRotation.PoleUp
+                ? MapCameraRotation.SystemUp
+                : MapCameraRotation.PoleUp;
+
+            ScreenMessages.PostScreenMessage("Rotation: " + MapRotationName(MapRotation), 3f,
+                ScreenMessageStyle.UPPER_CENTER);
+        }
+
+        public static string MapRotationName(MapCameraRotation rotation)
+        {
+            return rotation == MapCameraRotation.SystemUp ? "System up" : "Pole up";
+        }
+
+        /// <summary>
+        /// How fast the camera's up axis chases a new one, in reciprocal seconds. The remaining
+        /// angle decays by 1/e every 1/this seconds, so ~0.1 s to close most of the gap and a
+        /// little over 0.3 s to settle - a few frames of ease rather than a cut.
+        /// </summary>
+        private const float MapNorthSharpness = 10f;
+
+        /// <summary>Below this the remainder is not worth animating, so snap and be exact.</summary>
+        private const float MapNorthSnapDegrees = 0.01f;
+
+        //Vector3.zero is the "nothing established yet" sentinel: a real up axis is always a unit
+        //vector, so it can never collide with one.
+        private static Vector3 _mapNorth = Vector3.zero;
+
+        /// <summary>
+        /// Eases the map camera's up axis toward <paramref name="target"/>, so switching rotation
+        /// mode - or focusing a body with a different pole - swings rather than cuts.
+        ///
+        /// The step is 1 - exp(-k dt) rather than stock's k * dt. Both ease, but only this one is
+        /// frame-rate independent: the remaining angle after a step is (1 - t) times what it was,
+        /// so over a fixed wall-clock interval the total is exp(-k T) however the interval is
+        /// divided. Stock's form gives a different result at 30 fps than at 144.
+        ///
+        /// Slerped, not lerped, because the axis is a direction: lerping two unit vectors dips
+        /// through the inside of the sphere and moves at the wrong angular rate on the way.
+        /// </summary>
+        public static Vector3 SmoothMapNorth(Vector3 target)
+        {
+            //First frame, or the first after a scene change: adopt it outright. Easing here would
+            //swing the camera up from wherever the sentinel left it every time the map opens.
+            if (_mapNorth == Vector3.zero)
+            {
+                _mapNorth = target;
+                return _mapNorth;
+            }
+
+            if (Vector3.Angle(_mapNorth, target) < MapNorthSnapDegrees)
+            {
+                _mapNorth = target;
+                return _mapNorth;
+            }
+
+            var step = 1f - Mathf.Exp(-MapNorthSharpness * Time.unscaledDeltaTime);
+            _mapNorth = Vector3.Slerp(_mapNorth, target, step).normalized;
+
+            return _mapNorth;
+        }
+
+        /// <summary>
+        /// Drops the eased axis so the next frame adopts its target outright. The planetarium is
+        /// rebuilt across scene loads and the camera reframes anyway, so animating across that
+        /// boundary would only produce a swing on arrival.
+        /// </summary>
+        public static void ResetMapNorth()
+        {
+            _mapNorth = Vector3.zero;
+        }
+
+        #endregion
+
         #region Body axes
 
         /// <summary>
@@ -201,6 +292,52 @@ namespace TiltEm
             return body.BodyFrame.Z.xzy;
         }
 
+        /// <summary>
+        /// The normal of the system's orbital plane, in the celestial frame, Unity-swizzled.
+        ///
+        /// Walks up to the star the body ultimately orbits and takes that star's configured
+        /// orbital plane. A star with no plane configured falls back to its own pole, which for
+        /// most systems is close enough to the invariable plane to be a sensible default and
+        /// costs a pack nothing to leave unset.
+        ///
+        /// Celestial frame, not world, for the same reason as <see cref="CelestialNorth"/>: the
+        /// map camera cancels the sky itself.
+        /// </summary>
+        public static Vector3 SystemNorth(CelestialBody body)
+        {
+            var star = StarFor(body);
+
+            if (star == null) return Vector3.up;
+
+            BodyTilt plane;
+            if (TryGetOrbitalPlane(star.bodyName, out plane)) return plane.Tilt.Z.xzy;
+
+            return CelestialNorth(star);
+        }
+
+        /// <summary>
+        /// The nearest star at or above the body, or the root of its tree if nothing on the way
+        /// up is flagged as one - which is the right answer for a pack that never sets isStar.
+        /// </summary>
+        private static CelestialBody StarFor(CelestialBody body)
+        {
+            var current = body;
+
+            //The Sun is its own referenceBody in stock, so "parent is me" is the normal way this
+            //terminates. The counter is only there so a malformed tree cannot hang the frame.
+            for (var guard = 0; current != null && guard < 64; guard++)
+            {
+                if (current.isStar) return current;
+
+                var parent = current.referenceBody;
+                if (parent == null || ReferenceEquals(parent, current)) return current;
+
+                current = parent;
+            }
+
+            return current;
+        }
+
         #endregion
 
         #region Unity methods
@@ -223,6 +360,30 @@ namespace TiltEm
             GameEvents.onGUIApplicationLauncherReady.Add(EnableToolBar);
             DefineDebugActions();
 #endif
+        }
+
+        /// <summary>
+        /// The map camera rotation toggle.
+        ///
+        /// V is stock's flight camera-mode key, so this is gated on the map actually being up -
+        /// where that binding does nothing - and on CAMERACONTROLS being unlocked, which is what
+        /// stock tests before reading any of its own camera keys. Together those keep it off
+        /// dialogs, text fields and the loading screen.
+        /// </summary>
+        // ReSharper disable once UnusedMember.Global
+        public void Update()
+        {
+            if (!Input.GetKeyDown(KeyCode.V)) return;
+            if (!MapViewIsUp()) return;
+            if (!InputLockManager.IsUnlocked(ControlTypes.CAMERACONTROLS)) return;
+
+            ToggleMapRotation();
+        }
+
+        private static bool MapViewIsUp()
+        {
+            return HighLogic.LoadedScene == GameScenes.TRACKSTATION
+                   || (HighLogic.LoadedSceneIsFlight && MapView.MapIsEnabled);
         }
 
 #if DEBUG
@@ -270,6 +431,10 @@ namespace TiltEm
         // ReSharper disable once MemberCanBeMadeStatic.Local
         private void SceneRequested(GameEvents.FromToAction<GameScenes, GameScenes> data)
         {
+            //Unconditional: the camera reframes on every scene load, so the eased up axis has
+            //to start from the new scene's value rather than swing to it.
+            ResetMapNorth();
+
             //Only the destination matters. The old guard also required the *source* to be a
             //real scene, which silently skipped the main-menu to space-centre transition - so on
             //the very first load the anchor was never established.
@@ -312,6 +477,30 @@ namespace TiltEm
             }
 
             TiltDictionary[body.bodyName] = tilt;
+        }
+
+        /// <summary>
+        /// Records a star's orbital plane, as an IAU-style pole direction - the normal of the
+        /// plane rather than a direction lying in it.
+        /// Feel free to call this method from another mod.
+        /// </summary>
+        public static void AddOrbitalPlane(CelestialBody body, BodyTilt plane)
+        {
+            if (body == null)
+            {
+                Debug.LogError("[TiltEm]: AddOrbitalPlane parameter 'body' cannot be null!");
+                return;
+            }
+
+            OrbitalPlaneDictionary[body.bodyName] = plane;
+        }
+
+        /// <summary>
+        /// Returns the given star's orbital plane if one was configured.
+        /// </summary>
+        public static bool TryGetOrbitalPlane(string bodyName, out BodyTilt plane)
+        {
+            return OrbitalPlaneDictionary.TryGetValue(bodyName, out plane);
         }
 
         /// <summary>

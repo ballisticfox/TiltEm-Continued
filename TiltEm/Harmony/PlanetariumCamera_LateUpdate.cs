@@ -70,9 +70,15 @@ namespace TiltEm.Harmony
             var pivot = __instance.GetPivot();
             if (pivot == null) return;
 
+            //Eased rather than taken raw, so switching rotation mode with V - or focusing a body
+            //with a different pole - swings over a few frames instead of cutting. Driven from the
+            //target every frame rather than kicked off by the toggle, so both causes of a change
+            //are handled by the same path and neither can be missed.
+            var north = TiltEm.SmoothMapNorth(GetNorth(__instance.target));
+
             //Exactly what stock builds, with the two substitutions described above.
             var endRot = (Quaternion)Planetarium.Rotation
-                         * Quaternion.FromToRotation(Vector3.up, GetNorth(__instance.target))
+                         * Quaternion.FromToRotation(Vector3.up, north)
                          * Quaternion.AngleAxis(__instance.camHdg * Mathf.Rad2Deg, Vector3.up);
 
             pivot.rotation = endRot;
@@ -94,11 +100,15 @@ namespace TiltEm.Harmony
         }
 
         /// <summary>
-        /// The focused body's north pole, in the celestial frame - not the world frame. The
-        /// distinction matters here and is spelled out on <see cref="TiltEm.CelestialNorth"/>:
-        /// this patch cancels the sky itself with Planetarium.Rotation, so a world pole would
-        /// apply Zup a second time. The in-flight camera, which does no such cancellation, wants
+        /// The up axis, in the celestial frame - not the world frame. The distinction matters
+        /// here and is spelled out on <see cref="TiltEm.CelestialNorth"/>: this patch cancels the
+        /// sky itself with Planetarium.Rotation, so a world pole would apply Zup a second time.
+        /// The in-flight camera, which does no such cancellation, wants
         /// <see cref="TiltEm.WorldNorth"/> instead.
+        ///
+        /// Which axis depends on the mode the player picked with V - the focused body's own pole,
+        /// or the plane of the star it ultimately orbits. Both are celestial-frame directions, so
+        /// the choice is confined to this one call.
         /// </summary>
         private static Vector3 GetNorth(MapObject target)
         {
@@ -109,7 +119,9 @@ namespace TiltEm.Harmony
                 body = target.vessel.mainBody;
             }
 
-            return TiltEm.CelestialNorth(body);
+            return TiltEm.MapRotation == MapCameraRotation.SystemUp
+                ? TiltEm.SystemNorth(body)
+                : TiltEm.CelestialNorth(body);
         }
     }
 }

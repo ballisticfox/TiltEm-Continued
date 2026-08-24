@@ -53,6 +53,9 @@ namespace TiltEm.Verification
             Harness.Section("Initialisation and lifecycle (F1, F3)");
             LifecycleChecks.Run();
 
+            Harness.Section("Parent-relative orbit frame (I1)");
+            OrbitFrameChecks.Run();
+
             Harness.Section("Camera framing (G2, G3)");
             CameraChecks.Run();
 

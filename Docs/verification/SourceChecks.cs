@@ -22,6 +22,61 @@ namespace TiltEm.Verification
             CbUpdateRestoresStockFidelity();
             FrameMathIsFloatFree();
             CamerasUseTheRightPole();
+            ParentRelativeOrbitsAreWiredCorrectly();
+        }
+
+        /// <summary>
+        /// I1. OrbitFrameChecks proves the conversion; these pin the two things about the wiring
+        /// that the maths cannot see.
+        ///
+        /// First, that both readers of a body's tilt go through TiltConfig. If they diverged on
+        /// the pole-over-legacy-Euler precedence, a moon would be placed against one reading of
+        /// its parent's pole and then lit by another - a discrepancy that would look like a
+        /// physics bug rather than a config one.
+        ///
+        /// Second, that the rebase happens on the prefab. Parsing the Orbit node is too early
+        /// (the parent's Properties may not have been read yet) and the live system is too late
+        /// (the orbit has been Init'd), so OnPostLoad is the only correct point.
+        /// </summary>
+        private static void ParentRelativeOrbitsAreWiredCorrectly()
+        {
+            var tiltConfig = Read(Path.Combine("TiltEmKopernicus", "TiltConfig.cs"));
+            Present("I1", "TiltConfig reads the pole form first", tiltConfig, @"Has\(""poleRA""\)");
+            Present("I1", "TiltConfig falls back to the legacy Euler form", tiltConfig, @"Has\(""tiltx""\)");
+
+            foreach (var name in new[] { "KopernicusLoader.cs", "OrbitFrameLoader.cs" })
+            {
+                var text = StripComments(Read(Path.Combine("TiltEmKopernicus", name)));
+
+                // TryReadEffective, not TryRead: tiltRelativeToParent changes what a given
+                // poleRA/poleDec pair means, so a caller on the raw read would be working from a
+                // different pole than the game is.
+                Present("I2", name + " reads the tilt through TryReadEffective", text,
+                    @"TiltConfig\.TryReadEffective");
+                Absent("I2", name + " does not use the raw read", text, @"TiltConfig\.TryRead\s*\(");
+                Absent("I1", name + " does not read the tilt keys itself", text,
+                    @"""poleRA""|""poleDec""|""tiltx""|""tiltz""");
+            }
+
+            Present("I2", "tiltRelativeToParent is declared on the Properties node",
+                Read(Path.Combine("TiltEmKopernicus", "TiltReader.cs")),
+                @"ParserTarget\(""tiltRelativeToParent""\)");
+            Present("I2", "the rebase composes the parent's tilt onto the body's", tiltConfig,
+                @"TiltEmFrames\.ToCelestialTilt\(parentTilt,");
+            Present("I2", "the walk up the tree is recursive, so a moon resolves through its giant",
+                tiltConfig, @"TryReadEffective\(parent, depth \+ 1");
+            Present("I2", "a body with no parent is warned about, not silently rebased", tiltConfig,
+                @"ReferenceEquals\(parent, body\)[\s\S]{0,300}?LogWarning");
+
+            var reader = Read(Path.Combine("TiltEmKopernicus", "OrbitReader.cs"));
+            Present("I1", "relativeToParent is declared on the Orbit node", reader,
+                @"ParserTargetExternal\(""Body"",\s*""Orbit""");
+            Present("I1", "relativeToParent is a ParserTarget", reader, @"ParserTarget\(""relativeToParent""\)");
+
+            var loader = StripComments(Read(Path.Combine("TiltEmKopernicus", "OrbitFrameLoader.cs")));
+            Present("I1", "the rebase runs on the system prefab, via OnPostLoad", loader,
+                @"Events\.OnPostLoad\.Add");
+            Absent("I1", "the rebase does not re-Init a live orbit", loader, @"\.Init\s*\(\s*\)");
         }
 
         /// <summary>
@@ -41,6 +96,39 @@ namespace TiltEm.Verification
             var mapCamera = Read(Path.Combine("TiltEm", "Harmony", "PlanetariumCamera_LateUpdate.cs"));
             Present("G2", "the map camera asks for the celestial pole", mapCamera, @"TiltEm\.CelestialNorth\s*\(");
             Absent("G2", "the map camera does not use the world pole", mapCamera, @"TiltEm\.WorldNorth\s*\(");
+
+            // G5. The tree walk and the key gating need a live game, so pin them here.
+            var tiltEmSrc = StripComments(tiltEm);
+
+            Present("G5", "SystemNorth walks up to the star", tiltEmSrc, @"StarFor\s*\(");
+            Present("G5", "the walk terminates on a self-referencing parent", tiltEmSrc,
+                @"ReferenceEquals\(parent,\s*current\)");
+            Present("G5", "an unconfigured plane falls back to the star's pole", tiltEmSrc,
+                @"TryGetOrbitalPlane[\s\S]{0,200}?return CelestialNorth\(star\)");
+            Present("G5", "the toggle is gated on the map being up", tiltEmSrc,
+                @"MapViewIsUp\(\)\s*\)\s*return");
+            Present("G5", "and on camera controls being unlocked", tiltEmSrc,
+                @"IsUnlocked\(ControlTypes\.CAMERACONTROLS\)");
+
+            var mapCam = StripComments(Read(Path.Combine("TiltEm", "Harmony", "PlanetariumCamera_LateUpdate.cs")));
+            Present("G5", "the map camera honours the rotation mode", mapCam,
+                @"MapCameraRotation\.SystemUp[\s\S]{0,120}?TiltEm\.SystemNorth");
+            Present("G5", "and still uses the body pole in the other mode", mapCam,
+                @"TiltEm\.CelestialNorth\s*\(");
+
+            // G6. The ease itself is verified numerically; these pin the two decisions in it that
+            // a numeric check cannot see.
+            Present("G6", "the up axis is eased, not taken raw", mapCam, @"TiltEm\.SmoothMapNorth\s*\(");
+            Present("G6", "the ease is frame-rate independent, not k * dt", tiltEmSrc,
+                @"1f\s*-\s*Mathf\.Exp\(-MapNorthSharpness\s*\*\s*Time\.unscaledDeltaTime\)");
+            Present("G6", "directions are slerped, not lerped", tiltEmSrc, @"Vector3\.Slerp\(_mapNorth");
+            Present("G6", "a scene change adopts the new axis outright", tiltEmSrc,
+                @"ResetMapNorth\(\);[\s\S]{0,400}?data\.to\s*<\s*GameScenes\.SPACECENTER");
+
+            var reader = Read(Path.Combine("TiltEmKopernicus", "TiltConfig.cs"));
+            Present("G5", "TiltConfig reads the orbital plane pole form first", reader,
+                @"Has\(""orbitalPlaneRA""\)");
+            Present("G5", "and falls back to the legacy pair", reader, @"Has\(""orbitalPlaneX""\)");
 
             var flightCamera = Read(Path.Combine("TiltEm", "Harmony", "FlightGlobals_GetFoR.cs"));
             Present("G3", "the orbital camera asks for the world pole", flightCamera, @"TiltEm\.WorldNorth\s*\(");

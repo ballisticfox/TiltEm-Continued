@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tilt'Em tilt converter</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #16181d;
+    --muted: #5f6672;
+    --line: #dfe3e9;
+    --accent: #b6472b;
+    --orbit: #2f6f8f;
+    --parent: #6a5acd;
+    --grid: #c3c9d2;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1b1e24;
+      --ink: #e8eaed;
+      --muted: #99a1ad;
+      --line: #2c313a;
+      --accent: #e4795a;
+      --orbit: #6fb3d2;
+      --parent: #a396f0;
+      --grid: #3a414c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header { margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+
+  .cols { display: grid; grid-template-columns: minmax(0,1fr) 400px; gap: 20px; align-items: start; }
+  @media (max-width: 940px) { .cols { grid-template-columns: minmax(0,1fr); } .sticky { position: static !important; } }
+  .sticky { position: sticky; top: 24px; }
+
+  /* tabs */
+  [role=tablist] { display: flex; gap: 4px; margin-bottom: -1px; }
+  [role=tab] {
+    appearance: none; cursor: pointer;
+    font: 500 13.5px/1 system-ui, sans-serif;
+    padding: 10px 15px; color: var(--muted);
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    border-radius: 8px 8px 0 0;
+  }
+  [role=tab]:hover { color: var(--ink); }
+  [role=tab][aria-selected=true] {
+    background: var(--panel); border-color: var(--line);
+    color: var(--ink);
+  }
+  [role=tab]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  [role=tabpanel][hidden] { display: none; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  .tabbed > .card:first-child { border-radius: 0 10px 10px 10px; }
+  .card h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 0 0 2px; color: var(--muted); font-weight: 600;
+  }
+  .card > p.hint { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+
+  .row { display: grid; grid-template-columns: 132px 1fr 92px; gap: 12px; align-items: center; margin: 9px 0; }
+  .row label { font-size: 13px; color: var(--muted); }
+  .row output {
+    font: 13px/1 var(--mono); text-align: right; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: 5px; padding: 6px 7px;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .readout { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+  .pair { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 3px 0; }
+  .pair span:first-child { color: var(--muted); }
+  .pair span:last-child { font-family: var(--mono); }
+  .warn { color: var(--accent); }
+  .dotp { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+
+  pre {
+    margin: 12px 0 0; padding: 11px 12px; overflow-x: auto;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    font: 12.5px/1.55 var(--mono); color: var(--ink);
+  }
+
+  svg { display: block; width: 100%; height: auto; }
+  figure { margin: 0; }
+  figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Tilt'Em tilt converter</h1>
+  <p>Every number here is computed the way <code>TiltEmFrames</code> computes it &mdash;
+     <code>PlanetaryFrame</code> and <code>OrbitalFrame</code> both go through KSP's one
+     <code>SetFrame</code> generator, transcribed below exactly as
+     <code>Planetarium.CelestialFrame</code> writes it.</p>
+</header>
+
+<div class="cols">
+  <div class="tabbed">
+
+    <div role="tablist" aria-label="Conversion mode">
+      <button role="tab" id="tab-tilt" aria-controls="panel-tilt" aria-selected="true">Tilt</button>
+      <button role="tab" id="tab-rel" aria-controls="panel-rel" aria-selected="false" tabindex="-1">Relative to parent</button>
+    </div>
+
+    <!-- ── tab 1 ───────────────────────────────────────────────────────── -->
+    <div role="tabpanel" id="panel-tilt" aria-labelledby="tab-tilt">
+      <div class="card">
+        <h2>Pole &harr; legacy Euler</h2>
+        <p class="hint">Drag either pair; the other follows. These describe the same axis in two
+           parameterisations, so the conversion is exact both ways.</p>
+
+        <div class="row">
+          <label for="ra">poleRA</label>
+          <input type="range" id="ra" min="0" max="360" step="0.01" value="0">
+          <output id="raOut"></output>
+        </div>
+        <div class="row">
+          <label for="dec">poleDec</label>
+          <input type="range" id="dec" min="-90" max="90" step="0.01" value="90">
+          <output id="decOut"></output>
+        </div>
+        <div class="row">
+          <label for="tx">tiltx</label>
+          <input type="range" id="tx" min="-180" max="180" step="0.01" value="0">
+          <output id="txOut"></output>
+        </div>
+        <div class="row">
+          <label for="tz">tiltz</label>
+          <input type="range" id="tz" min="-90" max="90" step="0.01" value="0">
+          <output id="tzOut"></output>
+        </div>
+
+        <div class="readout">
+          <div class="pair"><span>Obliquity (90 &minus; poleDec)</span><span id="obl"></span></div>
+          <div class="pair"><span>Pole in celestial XYZ</span><span id="vec"></span></div>
+          <div class="pair"><span>Prime meridian the legacy pair folds in</span><span id="pm"></span></div>
+        </div>
+
+        <pre id="snippet"></pre>
+      </div>
+
+      <div class="card">
+        <h2>Put the equator in the orbital plane</h2>
+        <p class="hint">The tilt that makes a moon's pole its own orbit normal, so its parent stays
+           over its equator. <code>argumentOfPeriapsis</code> is absent because it is a rotation
+           inside the plane and cannot move the normal.</p>
+
+        <div class="row">
+          <label for="inc">inclination</label>
+          <input type="range" id="inc" min="0" max="180" step="0.01" value="10">
+          <output id="incOut"></output>
+        </div>
+        <div class="row">
+          <label for="lan">LAN</label>
+          <input type="range" id="lan" min="0" max="360" step="0.01" value="0">
+          <output id="lanOut"></output>
+        </div>
+
+        <div class="readout">
+          <div class="pair"><span>Orbit normal</span><span id="normVec"></span></div>
+          <div class="pair"><span>poleRA / poleDec</span><span id="orbPole"></span></div>
+          <div class="pair"><span>tiltx / tiltz</span><span id="orbLegacy"></span></div>
+        </div>
+
+        <pre id="orbSnippet"></pre>
+        <div class="toggle">
+          <input type="checkbox" id="showOrbit" checked>
+          <label for="showOrbit">draw this plane on the sphere</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── tab 2 ───────────────────────────────────────────────────────── -->
+    <div role="tabpanel" id="panel-rel" aria-labelledby="tab-rel" hidden>
+      <div class="card">
+        <h2>tiltRelativeToParent</h2>
+        <p class="hint">What a lean from the parent's equator becomes in the celestial frame &mdash;
+           a gas giant at some obliquity with a moon leaning a little off <em>its</em> equator.
+           Both bodies are drawn on the sphere.</p>
+
+        <div class="row">
+          <label for="pObl">parent obliquity</label>
+          <input type="range" id="pObl" min="0" max="180" step="0.01" value="23">
+          <output id="pOblOut"></output>
+        </div>
+        <div class="row">
+          <label for="mLean">moon's lean</label>
+          <input type="range" id="mLean" min="0" max="180" step="0.01" value="0.5">
+          <output id="mLeanOut"></output>
+        </div>
+        <div class="row">
+          <label for="mAz">lean direction</label>
+          <input type="range" id="mAz" min="0" max="360" step="0.01" value="0">
+          <output id="mAzOut"></output>
+        </div>
+
+        <div class="readout">
+          <div class="pair"><span>Parent's pole</span><span id="parPole"></span></div>
+          <div class="pair"><span>Moon's celestial pole</span><span id="relPole"></span></div>
+          <div class="pair"><span>Moon's celestial obliquity</span><span id="relObl"></span></div>
+          <div class="pair"><span>Range as the lean is swung around</span><span id="relRange"></span></div>
+        </div>
+
+        <pre id="relSnippet"></pre>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── viz ───────────────────────────────────────────────────────────── -->
+  <div class="card sticky">
+    <h2>Celestial sphere</h2>
+    <figure>
+      <svg id="viz" viewBox="0 0 420 420" role="img" aria-label="Celestial sphere with the body's pole"></svg>
+      <figcaption id="legend"></figcaption>
+    </figure>
+    <div class="row" style="margin-top:12px">
+      <label for="az">view azimuth</label>
+      <input type="range" id="az" min="0" max="360" step="1" value="35">
+      <output id="azOut"></output>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ── KSP's frame generator, transcribed ──────────────────────────────────
+   Planetarium.CelestialFrame.SetFrame(A, B, C), the ZXZ generator every
+   frame in the game is built from. Columns X, Y, Z as KSP stores them.     */
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+
+function setFrame(A, B, C) {
+  const cA = Math.cos(A), sA = Math.sin(A);
+  const cB = Math.cos(B), sB = Math.sin(B);
+  const cC = Math.cos(C), sC = Math.sin(C);
+  return {
+    X: [cA * cC - sA * cB * sC,  sA * cC + cA * cB * sC,  sB * sC],
+    Y: [-cA * sC - sA * cB * cC, -sA * sC + cA * cB * cC,  sB * cC],
+    Z: [sA * sB,                 -cA * sB,                 cB]
+  };
+}
+
+// PlanetaryFrame(ra, dec, rot) = SetFrame(ra-90, dec-90, rot+90)
+const planetaryFrame = (ra, dec, rot) =>
+  setFrame((ra - 90) * D2R, (dec - 90) * D2R, (rot + 90) * D2R);
+
+// OrbitalFrame(LAN, inc, argPe) = SetFrame(LAN, inc, argPe)
+const orbitalFrame = (lan, inc, arg) =>
+  setFrame(lan * D2R, inc * D2R, arg * D2R);
+
+/* ── legacy tiltx/tiltz ──────────────────────────────────────────────────
+   FromLegacyEuler builds AngleAxis(x, right) * AngleAxis(z, forward) in
+   UNITY space, then swizzles into celestial. Unity's +Y is celestial +Z,
+   so the swizzle is a y/z swap, and the frame conjugates as S M S.        */
+const mul3 = (a, b) => a.map((r, i) =>
+  [0, 1, 2].map(j => a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j]));
+const SWAP = [[1, 0, 0], [0, 0, 1], [0, 1, 0]];
+
+function legacyFrame(tiltx, tiltz) {
+  const x = tiltx * D2R, z = tiltz * D2R;
+  const Rx = [[1, 0, 0], [0, Math.cos(x), -Math.sin(x)], [0, Math.sin(x), Math.cos(x)]];
+  const Rz = [[Math.cos(z), -Math.sin(z), 0], [Math.sin(z), Math.cos(z), 0], [0, 0, 1]];
+  const M = mul3(SWAP, mul3(mul3(Rx, Rz), SWAP));
+  // Columns, to match CelestialFrame's X/Y/Z.
+  return { X: [M[0][0], M[1][0], M[2][0]],
+           Y: [M[0][1], M[1][1], M[2][1]],
+           Z: [M[0][2], M[1][2], M[2][2]] };
+}
+
+const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+const norm360 = d => ((d % 360) + 360) % 360;
+
+// A direction -> the RA/Dec that FromPole would need to reproduce it.
+function poleToRaDec(p) {
+  const dec = Math.asin(clamp(p[2], -1, 1)) * R2D;
+  // FromPole pins RA to zero at the pole, where it is degenerate.
+  const ra = dec >= 90 - 1e-9 ? 0 : norm360(Math.atan2(p[1], p[0]) * R2D);
+  return { ra, dec };
+}
+
+// ...and the tiltx/tiltz that FromLegacyEuler would need. From
+//   pole = (-sin z, sin x cos z, cos x cos z)
+function poleToLegacy(p) {
+  return {
+    tiltz: -Math.asin(clamp(p[0], -1, 1)) * R2D,
+    tiltx: Math.atan2(p[1], p[2]) * R2D
+  };
+}
+
+// The spin the legacy pair folds in on top of the pole: TiltTranspose * legacy,
+// read off its X column. This is what FromLegacyEuler stores as PrimeMeridian.
+function legacyPrimeMeridian(tiltx, tiltz) {
+  const L = legacyFrame(tiltx, tiltz);
+  const { ra, dec } = poleToRaDec(L.Z);
+  const T = planetaryFrame(ra, dec, 0);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  // (T^T * L).X = ( T.X.L.X , T.Y.L.X , T.Z.L.X )
+  return Math.atan2(dot(T.Y, L.X), dot(T.X, L.X)) * R2D;
+}
+
+/* ── state ───────────────────────────────────────────────────────────── */
+const el = id => document.getElementById(id);
+const fmt = (v, n = 4) => (Math.abs(v) < 5e-5 ? 0 : v).toFixed(n);
+const vecStr = p => `(${fmt(p[0], 4)}, ${fmt(p[1], 4)}, ${fmt(p[2], 4)})`;
+
+const S = { ra: 0, dec: 90, tiltx: 0, tiltz: 0 };
+let activeTab = "tilt";
+
+function fromPoleInputs() {
+  S.ra = +el("ra").value; S.dec = +el("dec").value;
+  const p = planetaryFrame(S.ra, S.dec, 0).Z;
+  const L = poleToLegacy(p);
+  S.tiltx = L.tiltx; S.tiltz = L.tiltz;
+  render();
+}
+
+function fromLegacyInputs() {
+  S.tiltx = +el("tx").value; S.tiltz = +el("tz").value;
+  const rd = poleToRaDec(legacyFrame(S.tiltx, S.tiltz).Z);
+  S.ra = rd.ra; S.dec = rd.dec;
+  render();
+}
+
+// ToCelestialTilt: carry the local pole through the parent's tilt frame.
+function relPoles() {
+  const pObl = +el("pObl").value, lean = +el("mLean").value, az = +el("mAz").value;
+  const parent = planetaryFrame(0, 90 - pObl, 0);
+  const carry = a => [
+    a[0] * parent.X[0] + a[1] * parent.Y[0] + a[2] * parent.Z[0],
+    a[0] * parent.X[1] + a[1] * parent.Y[1] + a[2] * parent.Z[1],
+    a[0] * parent.X[2] + a[1] * parent.Y[2] + a[2] * parent.Z[2]
+  ];
+  const localPole = a => planetaryFrame(a, 90 - lean, 0).Z;
+  return { parent, carry, localPole, parentPole: parent.Z, moonPole: carry(localPole(az)) };
+}
+
+/* ── the sphere ──────────────────────────────────────────────────────── */
+const CX = 210, CY = 210, R = 158;
+
+function camera(azDeg) {
+  const az = azDeg * D2R, el0 = 22 * D2R;
+  return {
+    right: [-Math.sin(az), Math.cos(az), 0],
+    up: [-Math.cos(az) * Math.sin(el0), -Math.sin(az) * Math.sin(el0), Math.cos(el0)],
+    fwd: [Math.cos(az) * Math.cos(el0), Math.sin(az) * Math.cos(el0), Math.sin(el0)]
+  };
+}
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const project = (p, c) => ({
+  x: CX + R * dot3(p, c.right),
+  y: CY - R * dot3(p, c.up),
+  depth: dot3(p, c.fwd)          // > 0 is the near hemisphere
+});
+
+// A great circle in the plane normal to n, split into near and far arcs so
+// the far side can be drawn faintly - that is the whole depth cue here.
+function greatCircle(n, c) {
+  const a = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const unit = v => { const m = Math.hypot(v[0], v[1], v[2]); return [v[0] / m, v[1] / m, v[2] / m]; };
+  const e1 = unit(cross(n, a)), e2 = cross(n, e1);
+
+  const near = [], far = [];
+  for (let i = 0; i <= 180; i++) {
+    const t = i / 180 * 2 * Math.PI;
+    const p = [e1[0] * Math.cos(t) + e2[0] * Math.sin(t),
+               e1[1] * Math.cos(t) + e2[1] * Math.sin(t),
+               e1[2] * Math.cos(t) + e2[2] * Math.sin(t)];
+    const q = project(p, c);
+    (q.depth >= 0 ? near : far).push(q);
+  }
+  const path = pts => pts.length < 2 ? "" :
+    "M" + pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join("L");
+  return { near: path(near), far: path(far) };
+}
+
+function axis(v, c, label, colour) {
+  const tip = project(v, c);
+  const behind = tip.depth < 0;
+  return `<line x1="${CX}" y1="${CY}" x2="${tip.x.toFixed(1)}" y2="${tip.y.toFixed(1)}"
+            stroke="${colour}" stroke-width="${behind ? 1.4 : 2.4}"
+            stroke-opacity="${behind ? 0.35 : 1}" ${behind ? 'stroke-dasharray="4 4"' : ""} />
+          <circle cx="${tip.x.toFixed(1)}" cy="${tip.y.toFixed(1)}" r="${behind ? 2.5 : 4}"
+            fill="${colour}" fill-opacity="${behind ? 0.35 : 1}" />
+          <text x="${tip.x.toFixed(1)}" y="${(tip.y - 10).toFixed(1)}" fill="${colour}"
+            fill-opacity="${behind ? 0.45 : 1}" font-size="11"
+            text-anchor="middle">${label}</text>`;
+}
+
+function drawSphere() {
+  const c = camera(+el("az").value);
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+
+  let out = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${col("--bg")}"
+                stroke="${col("--line")}" stroke-width="1"/>`;
+
+  const circle = (n, colour, width) => {
+    const g = greatCircle(n, c);
+    return `<path d="${g.far}" fill="none" stroke="${colour}" stroke-width="${width}"
+              stroke-opacity="0.28" stroke-dasharray="5 5"/>
+            <path d="${g.near}" fill="none" stroke="${colour}" stroke-width="${width}"
+              stroke-opacity="0.95"/>`;
+  };
+
+  // The celestial equator and its axes are the fixed reference, always drawn.
+  out += circle([0, 0, 1], col("--grid"), 1.4);
+  out += axis([0, 0, 1], c, "+Z", col("--grid"));
+  out += axis([1, 0, 0], c, "+X", col("--grid"));
+
+  const legend = [];
+  const key = (colour, text) => `<span class="dotp" style="background:${colour}"></span>${text}`;
+
+  if (activeTab === "tilt") {
+    if (el("showOrbit").checked) {
+      const n = orbitalFrame(+el("lan").value, +el("inc").value, 0).Z;
+      out += circle(n, col("--orbit"), 1.6);
+      out += axis(n, c, "h", col("--orbit"));
+      legend.push(key("var(--orbit)", "orbital plane &amp; its normal <em>h</em>"));
+    }
+    const pole = planetaryFrame(S.ra, S.dec, 0).Z;
+    out += circle(pole, col("--accent"), 1.8);
+    out += axis(pole, c, "pole", col("--accent"));
+    legend.unshift(key("var(--accent)", "body pole &amp; equator"));
+  } else {
+    const r = relPoles();
+    out += circle(r.parentPole, col("--parent"), 1.6);
+    out += axis(r.parentPole, c, "parent", col("--parent"));
+    out += circle(r.moonPole, col("--accent"), 1.8);
+    out += axis(r.moonPole, c, "moon", col("--accent"));
+    legend.push(key("var(--parent)", "parent pole &amp; equator"));
+    legend.push(key("var(--accent)", "moon pole &amp; equator"));
+  }
+
+  legend.push(key("var(--grid)", "celestial equator"));
+  el("viz").innerHTML = out;
+  el("legend").innerHTML = legend.join("<br>");
+}
+
+/* ── render ──────────────────────────────────────────────────────────── */
+function render() {
+  for (const [id, v] of [["ra", S.ra], ["dec", S.dec], ["tx", S.tiltx], ["tz", S.tiltz]]) {
+    if (document.activeElement !== el(id)) el(id).value = v;
+  }
+  el("raOut").value = fmt(S.ra, 3) + "°";
+  el("decOut").value = fmt(S.dec, 3) + "°";
+  el("txOut").value = fmt(S.tiltx, 3) + "°";
+  el("tzOut").value = fmt(S.tiltz, 3) + "°";
+
+  const pole = planetaryFrame(S.ra, S.dec, 0).Z;
+  el("obl").textContent = fmt(90 - S.dec, 4) + "°";
+  el("vec").textContent = vecStr(pole);
+
+  const pm = legacyPrimeMeridian(S.tiltx, S.tiltz);
+  el("pm").innerHTML = Math.abs(pm) < 5e-4
+    ? `${fmt(pm, 4)}°`
+    : `<span class="warn">${fmt(pm, 4)}°</span>`;
+
+  el("snippet").textContent =
+`@Properties
+{
+    poleRA  = ${fmt(S.ra, 6)}
+    poleDec = ${fmt(S.dec, 6)}
+}
+
+// the same axis in the legacy form
+@Properties
+{
+    tiltx = ${fmt(S.tiltx, 6)}
+    tiltz = ${fmt(S.tiltz, 6)}
+}`;
+
+  renderOrbit();
+  renderRelative();
+  drawSphere();
+}
+
+function renderOrbit() {
+  const inc = +el("inc").value, lan = +el("lan").value;
+  el("incOut").value = fmt(inc, 3) + "°";
+  el("lanOut").value = fmt(lan, 3) + "°";
+
+  const n = orbitalFrame(lan, inc, 0).Z;
+  const rd = poleToRaDec(n), lg = poleToLegacy(n);
+
+  el("normVec").textContent = vecStr(n);
+  el("orbPole").textContent = `${fmt(rd.ra, 4)}° / ${fmt(rd.dec, 4)}°`;
+  el("orbLegacy").textContent = `${fmt(lg.tiltx, 4)}° / ${fmt(lg.tiltz, 4)}°`;
+
+  el("orbSnippet").textContent =
+`@Properties
+{
+    tiltx = ${fmt(lg.tiltx, 6)}
+    tiltz = ${fmt(lg.tiltz, 6)}
+}`;
+}
+
+function renderRelative() {
+  const lean = +el("mLean").value;
+  el("pOblOut").value = fmt(+el("pObl").value, 3) + "°";
+  el("mLeanOut").value = fmt(lean, 3) + "°";
+  el("mAzOut").value = fmt(+el("mAz").value, 3) + "°";
+
+  const r = relPoles();
+  const par = poleToRaDec(r.parentPole);
+  const rd = poleToRaDec(r.moonPole);
+
+  el("parPole").textContent = `${fmt(par.ra, 4)}° / ${fmt(par.dec, 4)}°`;
+  el("relPole").textContent = `${fmt(rd.ra, 4)}° / ${fmt(rd.dec, 4)}°`;
+  el("relObl").textContent = fmt(90 - rd.dec, 4) + "°";
+
+  let lo = Infinity, hi = -Infinity;
+  for (let a = 0; a < 360; a += 2) {
+    const o = 90 - poleToRaDec(r.carry(r.localPole(a))).dec;
+    lo = Math.min(lo, o); hi = Math.max(hi, o);
+  }
+  el("relRange").textContent = `${fmt(lo, 4)}° – ${fmt(hi, 4)}°`;
+
+  el("relSnippet").textContent =
+`// on the moon - the lean is written as-is, Tilt'Em composes the parent's
+@Properties
+{
+    tiltRelativeToParent = true
+    poleRA  = ${fmt(+el("mAz").value, 6)}
+    poleDec = ${fmt(90 - lean, 6)}
+}`;
+}
+
+/* ── tabs ────────────────────────────────────────────────────────────── */
+const TABS = [["tab-tilt", "panel-tilt", "tilt"], ["tab-rel", "panel-rel", "rel"]];
+
+function selectTab(key, focus) {
+  activeTab = key;
+  for (const [tabId, panelId, k] of TABS) {
+    const on = k === key;
+    el(tabId).setAttribute("aria-selected", String(on));
+    el(tabId).tabIndex = on ? 0 : -1;
+    el(panelId).hidden = !on;
+    if (on && focus) el(tabId).focus();
+  }
+  drawSphere();
+}
+
+TABS.forEach(([tabId, , key], i) => {
+  el(tabId).addEventListener("click", () => selectTab(key));
+  el(tabId).addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    selectTab(TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length][2], true);
+  });
+});
+
+/* ── wiring ──────────────────────────────────────────────────────────── */
+["ra", "dec"].forEach(id => el(id).addEventListener("input", fromPoleInputs));
+["tx", "tz"].forEach(id => el(id).addEventListener("input", fromLegacyInputs));
+["inc", "lan", "pObl", "mLean", "mAz"].forEach(id => el(id).addEventListener("input", render));
+el("az").addEventListener("input", () => { el("azOut").value = el("az").value + "°"; drawSphere(); });
+el("showOrbit").addEventListener("change", drawSphere);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawSphere);
+
+el("azOut").value = el("az").value + "°";
+render();
+</script>
+</body>
+</html>
