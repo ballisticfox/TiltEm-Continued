@@ -37,7 +37,7 @@
 
 #let proofbox(body) = block(
   width: 100%,
-  breakable: false,
+  breakable: true,
   inset: (left: 10pt, rest: 4pt),
   above: 0.8em,
   below: 1.2em,
@@ -637,17 +637,35 @@ $R_z$-shaped generator KSP gives us.
 
 = The construction <sec-construction>
 
-Two conventions before anything else. Throughout this section $theta$ is the body's
-*absolute* spin phase from @eq-theta, never $theta_"dir"$, and $e$ denotes *elapsed
-rotation*: how far the body has turned since it entered the rotating frame.
+*What has to be built.* @sec-what-moves described the arrangement stock maintains:
+while a body holds the rotating frame the sky turns, the body stands still, and the
+two are tied together closely enough that an observer on the ground cannot tell which
+of the two implementations is running. We need that same arrangement for a body whose
+pole is not $bold(e)_3$. Set out as requirements, the frames must satisfy:
 
-*Why there is an anchor.* Stock needs no such thing, because its planetarium frame is
-driven by $theta_"inv"$, a global accumulator that is never reset. It holds the total
-turn, so $Rz(theta_"inv")$ is already an absolute answer. Three things stop us reusing
-it. It is a scalar about $bold(e)_3$, and @sec-a8 shows that a tilted body needs the
-sky turned about $bold(p)$ instead. It is global while the pole is per body, so its
-value means something different the moment the dominant body changes. And it is
-maintained by code the mod does not control: Kopernicus sets `inverseRotation`
++ the body's frame is *constant* for as long as the frame is held, a ground that
+  moves defeating the entire purpose of the rotating frame;
++ the sky's rotation reproduces the apparent motion the body's own spin used to
+  supply, which means turning about the body's pole $bold(p)$ rather than about
+  $bold(e)_3$ (@sec-a8 shows what goes wrong otherwise);
++ both frames are continuous at the entry and at the exit, so that nothing jumps as
+  the switch is thrown;
++ and every expression collapses to stock's own when $bold(p) = bold(e)_3$.
+
+Stock meets all four with a single scalar $theta_"inv"$, and it can do so because
+there the sky's axis and the body's axis are the same axis. Rotations about a common
+axis compose by adding their angles (@eq-zcompose), so one number carries both. That
+is precisely what fails once the pole leaves $bold(e)_3$: the two rotations no longer
+share an axis, the angles no longer add, and what stock does with one number has to
+be done with matrices.
+
+*Why there is an anchor.* Reusing $theta_"inv"$ itself is the obvious economy, and it
+comes close to working. It is a global accumulator that is never reset, so it holds
+the total turn and $Rz(theta_"inv")$ is already an absolute answer rather than an
+increment. Three things stop us. It is a scalar about $bold(e)_3$, which is the axis
+we have just established is the wrong one. It is global while the pole is per body,
+so its value means something different the moment the dominant body changes. And it
+is maintained by code the mod does not control: Kopernicus sets `inverseRotation`
 directly, skipping the update that keeps @eq-invariant true.
 
 So the planetarium frame here is driven by *elapsed* rotation $e$, computed from the
@@ -658,8 +676,15 @@ $T thin Rz(e) thin T^tr thin Af$ the conjugated spin is the *how far* and $Af$ i
 *from where*, which is to say $Af$ is the constant of integration. Stock got its
 equivalent for free by never resetting the accumulator.
 
-With that settled, the construction is five objects, and the rest of this section
-proves they do what is required:
+#thm[Conventions for this section.][
+  $theta$ is always the body's *absolute* spin phase from @eq-theta, never
+  $theta_"dir"$. The symbol $e$ denotes *elapsed rotation*: how far the body has
+  turned since it entered the rotating frame, so that $theta = theta_0 + e$ while the
+  frame is held, where $theta_0$ is the phase at the instant of entry.
+]
+
+The construction is five objects, and the rest of this section proves they do what is
+required:
 
 $
 T &= "PlanetaryFrame"(alpha, delta, 0)
@@ -678,8 +703,8 @@ The first line is @eq-tilt repeated, not a new definition: $T$ is fixed once per
 body by its pole, with $T bold(e)_3 = bold(p)$, and $T = bold(I)$ when the body is
 untilted. It carries no time dependence, so every occurrence of $T$ below is a
 constant matrix, and $mu$ beside it is the prime meridian offset from the same
-place. Of the rest, $theta_0$ is the spin phase at the instant the body entered
-the rotating frame, and $bold(C)$ is the body frame it had at that instant.
+place. The one symbol not yet accounted for is $bold(C)$, the body frame the body
+held at the instant of entry.
 
 Compare these with what stock builds. $Lf$ is @eq-pole's factorisation with a real
 pole instead of $bold(e)_3$; $Bf$ is Proposition 3.2 with the scalar subtraction
@@ -777,9 +802,82 @@ public static Planetarium.CelestialFrame AnchorFor(BodyTilt tilt, double rot,
 }
 ```
 
+== The inertial case
+
+Everything so far has been written from inside the rotating phase. The definitions
+@eq-defs are not confined to it, and it is worth being explicit about what each of the
+five becomes when the body is inertial, because the implementation evaluates them
+through one unconditional path rather than two branches.
+
+Three of the five do not vary with the mode at all. $T$ is fixed by the pole.
+$Lf(theta)$ is built from $T$ and the spin phase, which by @eq-theta is a function of
+time and nothing else, so it advances at the body's own rate either way. And
+$Bf = Zup^tr Lf(theta)$ is the same product of the same two factors. What the mode
+changes is not the formula but which factor is moving.
+
+The remaining two *are* the mode. $Af$ does not exist: with no entry instant to latch
+against there is no elapsed rotation to measure, and the anchor is released when the
+body leaves (@sec-leaving). $Zup$ is not written by an inertial body, only by a
+rotating one, so here it is external data. Two cases follow.
+
+*Nothing holds the rotating frame.* No body writes $Zup$, so it is constant: the
+identity in a fresh session, otherwise wherever the last rotating body left it.
+
+#thm[Proposition 5.3 (Free rotation).][
+  If $Zup$ is constant then $Bf(theta + Delta) = Bf(theta) thin Rz(Delta)$. The body
+  turns by $Delta$ about its own pole, and the pole does not move.
+]
+
+#proofbox[
+  $
+  Bf(theta + Delta) = Zup^tr thin T thin Rz(theta + mu + Delta)
+    = Zup^tr thin T thin Rz(theta + mu) thin Rz(Delta) = Bf(theta) thin Rz(Delta),
+  $
+  by @eq-zcompose. The factor is on the *right*, so by Proposition 2.3 it is a spin
+  about the frame's own third column, which it therefore fixes.
+]
+
+Set that beside Theorem 5.1: the same product, the opposite conclusion. There a
+$Rz(-e)$ arrived from the conjugated sky rotation and cancelled the body's $Rz(e)$;
+here nothing arrives to cancel it and the body's own factor survives. The two results
+are the two ways of supplying the same apparent motion, by turning the body or by
+turning the sky, and in both the axis is $bold(p)$.
+
+*Another body holds the rotating frame.* Only one body can, there being a single
+`Planetarium.Zup` and a single dominant body to drive it. That body turns the sky for
+every other, so an inertial body elsewhere sees a $Zup$ that moves, and
+$Bf = Zup^tr Lf(theta)$ gives it both motions: its own spin about its own pole, and
+the counter-turn every object picks up while the frame is held. The $Zup^tr$ factor is
+easy to omit here, on the reasoning that a body which is not itself rotating is
+unaffected by the switch. It is not: omitting the factor leaves it turning at its own
+rate in a sky that has moved out from under it. Stock reaches the same place with a
+scalar, $theta_"dir" = theta - theta_"inv"$ subtracting the same global turn, which is
+Proposition 3.2.
+
+#block(sticky: true)[Collected:]
+
+#align(center)[
+  #table(
+    columns: 3,
+    stroke: 0.5pt + luma(70%),
+    inset: 7pt,
+    align: (left, left, left),
+    table.header([], [*inertial*], [*rotating*]),
+    [$T$], [constant per body], [constant per body],
+    [$Lf(theta)$], [advances with $theta$], [advances with $theta$],
+    [$Af$], [none; $e$ undefined], [$Lf(theta_0) bold(C)^tr$, latched on entry],
+    [$Zup$], [not written here; external], [$T Rz(e) T^tr Af$, advancing],
+    [$Bf$], [$Zup^tr Lf(theta)$, advancing], [$Zup^tr Lf(theta)$, constant],
+  )
+]
+
+The last row is the one to hold on to. $Bf$ is one expression, evaluated every tick in
+both modes; whether the body appears to turn is settled entirely by whether the $Zup$
+beside it is moving.
+
 == Continuity at the threshold
 
-#thm[Proposition 5.3.][
+#thm[Proposition 5.4.][
   Suppose the body was inertial immediately before the switch, so that its frame
   was $bold(C) = Zup_"prev"^tr thin Lf(theta_0)$ for the planetarium frame $Zup_"prev"$ in
   force at that moment. Then $Af = Zup_"prev"$, and $Zup(0) = Zup_"prev"$.
@@ -804,7 +902,7 @@ $bold(C)$ rather than capturing $Zup$ makes that failure impossible by construct
 
 == Why the anchor multiplies on the right
 
-#thm[Proposition 5.4.][
+#thm[Proposition 5.5.][
   Defining instead $tilde(Zup)(e) := Af thin T thin Rz(e) thin T^tr$ --- the anchor
   on the left --- does *not* freeze the body frame.
 ]
@@ -837,7 +935,7 @@ The placement is therefore forced by the requirement, not chosen for convenience
 
 == The prime meridian is invisible to the sky <sec-pm>
 
-#thm[Proposition 5.5.][
+#thm[Proposition 5.6.][
   Folding $mu$ into $T$ --- replacing $T$ by $T thin Rz(mu)$ in the definition of
   $Zup$ --- changes nothing.
 ]
@@ -864,7 +962,7 @@ $mu$ separately and applies it only inside $Lf$, where it belongs.
 
 == Reduction to stock
 
-#thm[Proposition 5.6.][
+#thm[Proposition 5.7.][
   If $T = bold(I)$ and $mu = 0$, the definitions @eq-defs reduce to stock KSP's own
   *expressions*: $Bf = Rz(theta - theta_"inv")$ and $Zup = Rz(theta_"inv")$.
 ]
@@ -993,13 +1091,13 @@ coincide and the question never arises.
 *The crossing, end to end.* A vessel descends past the threshold on a tilted planet.
 `inverseRotation` flips, and nothing else changes on that tick (Proposition 3.1). The
 anchor is latched as $Af = Lf(theta_0) bold(C)^tr$, which by Corollary 5.2 leaves the
-body exactly where it stands and by Proposition 5.3 leaves the sky exactly where it
+body exactly where it stands and by Proposition 5.4 leaves the sky exactly where it
 was. While the vessel remains below, the body's frame does not move at all
 (Theorem 5.1), so the physics engine sees a stationary planet; the sky turns instead,
 about the body's own pole, so the obliquity cannot drift (Corollary 6.3) and the
 seasons and sub-solar point stay right however long the vessel stays down. On the way
 back out the anchor is released and the body resumes from its own $theta$. If the
-planet is untilted, every one of these expressions is stock's own (Proposition 5.6).
+planet is untilted, every one of these expressions is stock's own (Proposition 5.7).
 
 = Worked examples <sec-examples>
 
@@ -1073,7 +1171,7 @@ Af = mat(
 )
 $
 
-which is $Rz(100degree)$ exactly. That is Proposition 5.3 in numbers: the anchor comes
+which is $Rz(100degree)$ exactly. That is Proposition 5.4 in numbers: the anchor comes
 out equal to the planetarium frame already in force, so nothing moves at the crossing.
 Measured as a rotation between the two frames, the difference is
 $5.3 times 10^(-15)$ degrees, which is round-off.
@@ -1101,7 +1199,7 @@ figure is exact rather than merely small: $Zup(e)^tr bold(p) = Af^tr bold(p)$
 identically, so the two vectors are equal bit for bit and the angle between them is
 $0$, not $10^(-14)$.
 
-== Leaving the rotating frame
+== Leaving the rotating frame <sec-leaving>
 
 The vessel climbs back out. The flag clears, and three things follow from @eq-defs
 without any further machinery.
@@ -1190,7 +1288,7 @@ Rz(37.4degree) bold(e)_1 = vec(0.794415, 0.607376, 0),
 $
 
 with a largest component difference of $3.3 times 10^(-16)$, one unit in the last
-place of a double. This is Proposition 5.6 measured rather than argued, and it is why
+place of a double. This is Proposition 5.7 measured rather than argued, and it is why
 an untilted install is unaffected by the patch.
 
 = Orbital elements <sec-elements>
@@ -1431,7 +1529,7 @@ The three results that make it work:
 + *Proposition 3.1* --- continuity at the threshold is a property of the invariant
   $theta = theta_"dir" + theta_"inv"$, not of the generator, so any frame function
   inherits it.
-+ *Proposition 5.6* --- with $T = bold(I)$ everything collapses to stock's own
++ *Proposition 5.7* --- with $T = bold(I)$ everything collapses to stock's own
   expressions exactly, so an untilted install is unaffected.
 
 And the two traps:
