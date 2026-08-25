@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="../master/Doc/Tilt.gif" alt="Gif" height="254" width="346"/></a>
+  <a href="../../releases/latest"><img src="../master/Docs/Tilt.gif" alt="Gif" height="254" width="346"/></a>
 </p>
 
 ---

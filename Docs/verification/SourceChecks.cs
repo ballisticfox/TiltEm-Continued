@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -25,6 +25,35 @@ namespace TiltEm.Verification
             ParentRelativeOrbitsAreWiredCorrectly();
             ElementReadoutsAreWiredCorrectly();
             TheAnchoredZupIsKeyedToItsOwnBody();
+            TheRotatingFrameSurvivesAnSoiChange();
+        }
+
+        /// <summary>
+        /// L1/L2/L3. The simulation can only exercise logic the harness itself restates, so these
+        /// pin both halves of the fix in the shipped sources: the entitlement gate in CBUpdate,
+        /// and the handover that ends the outgoing body's frame on a sphere-of-influence change.
+        /// </summary>
+        private static void TheRotatingFrameSurvivesAnSoiChange()
+        {
+            var cbUpdate = StripComments(Read(Path.Combine("TiltEm", "Harmony", "CelestialBody_CBUpdate.cs")));
+            var tiltEm = StripComments(Read(Path.Combine("TiltEm", "TiltEm.cs")));
+            var handover = StripComments(Read(Path.Combine("TiltEm", "Harmony", "OrbitPhysicsManager_SetDominantBody.cs")));
+
+            Present("L2", "CBUpdate gates the rotating branch on entitlement", cbUpdate,
+                @"body\.inverseRotation && TiltEm\.MayHoldRotatingFrame\(body\)");
+            Present("L2", "the dominant body is the authority when there is one", tiltEm,
+                @"OrbitPhysicsManager\.DominantBody");
+            Present("L3", "and an absent one falls back to the anchor holder", tiltEm,
+                @"ZupAnchorBody == null \|\| ReferenceEquals\(ZupAnchorBody, body\)");
+
+            //The outgoing body has to be read before the original runs; setDominantBody assigns
+            //dominantBody on its first line and its own event reports the new body as "from".
+            Present("L1", "the outgoing body is captured in a prefix", handover,
+                @"HarmonyPrefix[\s\S]{0,240}out CelestialBody __state");
+            Present("L1", "the handover ends the outgoing rotating frame", handover,
+                @"outgoing\.inverseRotation = false");
+            Present("L1", "and releases its anchor whether or not it cleared the flag", handover,
+                @"TiltEm\.ReleaseZupAnchor\(outgoing\)");
         }
 
         /// <summary>

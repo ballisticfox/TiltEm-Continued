@@ -62,7 +62,10 @@ namespace TiltEm.Harmony
                 body.rotPeriodRecip = 1 / body.rotationPeriod;
                 body.rotationAngle = (body.initialRotation + 360 * body.rotPeriodRecip * Planetarium.GetUniversalTime()) % 360;
 
-                if (body.inverseRotation)
+                //The entitlement check is not redundant with the flag: stock can leave a body
+                //flagged as rotating after it stops being dominant, and two flagged bodies
+                //would fight over one Zup and one anchor. See TiltEm.MayHoldRotatingFrame.
+                if (body.inverseRotation && TiltEm.MayHoldRotatingFrame(body))
                 {
                     //Anchored on the body's own elapsed rotation, so Zup does not depend on the
                     //InverseRotAngle bookkeeping at all. On the first tick after the switch the
@@ -82,6 +85,10 @@ namespace TiltEm.Harmony
                     //The anchor describes one continuous stretch in the rotating frame, so it has
                     //to be dropped when that stretch ends - otherwise re-entry resumes an anchor
                     //the body has since rotated away from. See TiltEm.ReleaseZupAnchor.
+                    //
+                    //A body that is still flagged but no longer entitled lands here too, and
+                    //that is deliberate: it should behave inertially and keep its frame moving,
+                    //rather than sit frozen at the orientation it happened to stop at.
                     TiltEm.ReleaseZupAnchor(body);
 
                     body.directRotAngle = (body.rotationAngle - Planetarium.InverseRotAngle) % 360;

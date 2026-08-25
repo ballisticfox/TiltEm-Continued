@@ -31,6 +31,8 @@ namespace TiltEm.Verification
             Console.WriteLine("Tilt'Em reference-frame verification");
             Console.WriteLine("KSP managed assemblies: " + managed);
 
+            if (Array.IndexOf(args, "--examples") >= 0) return RunExamples();
+
             return RunAll();
         }
 
@@ -38,6 +40,13 @@ namespace TiltEm.Verification
         /// Kept separate from Main so the JIT does not need to resolve KSP types until after
         /// the AssemblyResolve hook is installed.
         /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int RunExamples()
+        {
+            WorkedExamples.Run();
+            return 0;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int RunAll()
         {
@@ -64,6 +73,9 @@ namespace TiltEm.Verification
 
             Harness.Section("Debug-menu teleports (K1)");
             TeleportChecks.Run();
+
+            Harness.Section("Sphere-of-influence handovers (L1-L3)");
+            DominantBodyChecks.Run();
 
             var root = SourceChecks.FindRepoRoot();
             Harness.Section("Shipped sources (C1-C4, D1-D3) - " + root);

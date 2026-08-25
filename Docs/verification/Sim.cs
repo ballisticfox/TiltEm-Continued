@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -63,6 +63,13 @@ namespace TiltEm.Verification
         // Production keys the anchor on the CelestialBody reference; the harness keys on the
         // body's name, which is equivalent here and survives cloning the world.
         private string _zupAnchorBody;
+
+        /// <summary>
+        /// Mirrors OrbitPhysicsManager.dominantBody. Null models the case where no physics
+        /// manager exists yet - system construction, PSystemSetup.SetSpaceCentre - in which
+        /// nothing can arbitrate and the first body to claim the frame keeps it.
+        /// </summary>
+        public string DominantBody;
 
         /// <summary>
         /// When set, bodies are updated with the pre-fix formula (BodyFrame = T * Rz(rotationAngle
@@ -152,6 +159,73 @@ namespace TiltEm.Verification
             if (rotating) EnsureZupAnchor(body);
         }
 
+        /// <summary>The body currently holding the anchor, or null. Mirrors TiltEm.ZupAnchorBody.</summary>
+        public string AnchorBody
+        {
+            get { return _zupAnchorBody; }
+        }
+
+        public bool HoldsAnchor(string name)
+        {
+            return _zupAnchorBody == name;
+        }
+
+        /// <summary>Mirrors TiltEm.MayHoldRotatingFrame.</summary>
+        public bool MayHoldRotatingFrame(SimBody body)
+        {
+            if (body == null) return false;
+            if (DominantBody != null) return DominantBody == body.Name;
+
+            return _zupAnchorBody == null || _zupAnchorBody == body.Name;
+        }
+
+        /// <summary>
+        /// Mirrors OrbitPhysicsManager.setDominantBody together with the mod's postfix on it:
+        /// stock reassigns the dominant body and rebuilds vessel velocities, and the postfix
+        /// ends the outgoing body's rotating frame and releases its anchor.
+        ///
+        /// Stock on its own does neither, which is the defect these checks cover.
+        /// </summary>
+        public void SetDominantBody(SimBody incoming)
+        {
+            var outgoing = DominantBody;
+            DominantBody = incoming != null ? incoming.Name : null;
+
+            if (outgoing == null || outgoing == DominantBody) return;
+            if (StockHandover) return;
+
+            foreach (var body in _known)
+            {
+                if (body.Name != outgoing) continue;
+
+                body.InverseRotation = false;
+                ReleaseZupAnchor(body);
+            }
+        }
+
+        /// <summary>
+        /// The bodies SetDominantBody can reach, standing in for FlightGlobals.Bodies.
+        /// </summary>
+        private readonly List<SimBody> _known = new List<SimBody>();
+
+        public void Register(params SimBody[] bodies)
+        {
+            _known.Clear();
+            _known.AddRange(bodies);
+        }
+
+        /// <summary>
+        /// When set, SetDominantBody behaves as unpatched stock: the outgoing body keeps both
+        /// its inverseRotation flag and its anchor. Used to prove the checks have teeth.
+        /// </summary>
+        public bool StockHandover;
+
+        /// <summary>
+        /// When set, the rotating branch is taken by every flagged body, as it was before
+        /// MayHoldRotatingFrame existed. The other half of the same witness.
+        /// </summary>
+        public bool IgnoreEntitlement;
+
         /// <summary>
         /// Mirrors CelestialBody_CBUpdate.CBUpdate. Call once per body per tick, in the same
         /// order Planetarium.UpdateCBsRecursive would.
@@ -161,7 +235,7 @@ namespace TiltEm.Verification
             var rotPeriodRecip = 1.0 / body.RotationPeriod;
             body.RotationAngle = (body.InitialRotation + 360.0 * rotPeriodRecip * ut) % 360.0;
 
-            if (body.InverseRotation)
+            if (body.InverseRotation && (IgnoreEntitlement || MayHoldRotatingFrame(body)))
             {
                 EnsureZupAnchor(body);
 

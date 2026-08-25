@@ -158,6 +158,41 @@ namespace TiltEm
         }
 
         /// <summary>
+        /// Whether <paramref name="body"/> is entitled to hold the rotating frame this tick.
+        ///
+        /// There is one Planetarium.Zup and one anchor, so exactly one body may drive them.
+        /// Stock does not enforce that. OrbitPhysicsManager.setDominantBody reassigns
+        /// dominantBody without clearing the outgoing body's inverseRotation, and
+        /// checkReferenceFrame only ever tests whichever body is dominant now. For most bodies
+        /// it never shows, because you cross the threshold on the way out and the flag is
+        /// cleared before the sphere of influence changes. It shows for a body whose
+        /// inverseRotThresholdAltitude reaches past its own SOI - Mimas, in the real-scale
+        /// packs - because then there is no altitude inside the SOI at which the flag can be
+        /// cleared, and leaving carries it away still set.
+        ///
+        /// With two bodies flagged, both take the rotating branch of CBUpdate, both write Zup,
+        /// and both call EnsureZupAnchor, which re-latches every time the body differs - from a
+        /// BodyFrame that was written against the other body's Zup moments earlier. That is a
+        /// feedback loop, and everything positioned through Zup rides it.
+        ///
+        /// The dominant body is the authority whenever there is one: the rotating frame exists
+        /// for the active vessel's physics, and that physics is referenced to the dominant body
+        /// and to nothing else. Before the physics manager exists - system construction,
+        /// PSystemSetup.SetSpaceCentre - nothing can arbitrate, so whichever body got here
+        /// first keeps it, which is also what preserves the space centre's frame at load.
+        /// </summary>
+        public static bool MayHoldRotatingFrame(CelestialBody body)
+        {
+            if (body == null) return false;
+
+            //Null whenever the physics manager is absent; its own getter guards fetch.
+            var dominant = OrbitPhysicsManager.DominantBody;
+            if (dominant != null) return ReferenceEquals(body, dominant);
+
+            return ZupAnchorBody == null || ReferenceEquals(ZupAnchorBody, body);
+        }
+
+        /// <summary>
         /// Drops the anchor so the next rotating body re-latches. Required on scene changes,
         /// because Planetarium.Awake rebuilds Zup - an anchor captured against the previous
         /// scene's frame would no longer mean anything.
@@ -309,8 +344,7 @@ namespace TiltEm
 
             if (star == null) return Vector3.up;
 
-            BodyTilt plane;
-            if (TryGetOrbitalPlane(star.bodyName, out plane)) return plane.Tilt.Z.xzy;
+            if (TryGetOrbitalPlane(star.bodyName, out var plane)) return plane.Tilt.Z.xzy;
 
             return CelestialNorth(star);
         }
