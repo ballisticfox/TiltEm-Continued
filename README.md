@@ -8,7 +8,9 @@
 
 *This mod adds [planetary axial tilt](https://simple.wikipedia.org/wiki/Axial_tilt) for [Kerbal Space Program (KSP)](https://kerbalspaceprogram.com)*
 
-This is a complete and total rewrite of the original Tilt'Em mod! The previous version of tilt'em attempted to use mode switching between the rotating and non-rotating reference frames used by KSP, effectively swapping whether the body was tilted or the planetarium was tilted. However this implementation caused discontinuities at the transition point. This rewrite uses a fixed anchor point upon entry of the rotating reference frame, allowing for continuous entry/exit of the inverseRotating frame.
+This is a complete and total rewrite of the original Tilt'Em mod! The previous version of tilt'em attempted to use mode switching between the rotating and non-rotating reference frames used by KSP, effectively swapping whether the body was tilted or the planetarium was tilted. However this implementation caused discontinuities at the transition point.
+
+This rewrite uses a fixed anchor point represented by the body frame at the of the rotating reference frame, allowing for continuous entry/exit of the inverseRotating frame.
 
 If you would like to read more about the mathematics of Tilt'Em, you can read about a (somewhat rigorous) formalization [here](Docs/TILT_MATHEMATICS.pdf).
 
@@ -21,7 +23,7 @@ If you would like to read more about the mathematics of Tilt'Em, you can read ab
 
 # Usage in game
 
-There's now a new camera control in Map View / Tracking station! By pressing *v* on your keyboard, you'll swap between "Rotation: Pole Up" and "Rotation: System Up".
+There's now a new camera control in Map View / Tracking Station! By pressing *v* on your keyboard, you'll swap between "Rotation: Pole Up" and "Rotation: System Up".
 
 The former of these is rotates the camera so that the "up" direction is inline with the selected body's North Pole. The latter will walk up the celestial-tree until it hits a star, at which point it'll use the star's tilt or a user defined orbital plane as the up vector.
 
@@ -58,10 +60,12 @@ On stars, you can also specify a `orbitalPlaneRA` or `orbitalPlaneDec` / `orbita
 
 ---
 
-### Status:
+# Credits & Licenses
 
-|   Branch   |   Build  |
-| ---------- | -------- |
-| **master** |[![AppVeyor](https://img.shields.io/appveyor/ci/gavazquez/tiltem/master.svg?logo=appveyor)](https://ci.appveyor.com/project/gavazquez/tiltem/branch/master) |
+I would like to thank Gabriel Vazquez (the original developer) for making a valiant effort towards solving this problem.
 
----
+I would also like to thank my discord community and the planet modding community for playtesting this mod before release.
+
+I'd also like to thank my patreon who support everything I do, if you'd like to support me, you can do so [here](https://www.patreon.com//ballisticfox).
+
+*AI Disclosure: Claude Opus 5 & Claude Opus 4.6 were used in the idealization, mathematical grounding and implementation of this mod. If you have code comment or concerns, please make an appropriate GitHub issue or Pull Request.*
