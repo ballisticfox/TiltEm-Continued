@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  TEMPLATE - copy to TiltEm.props.user and edit KSPBT_GameRoot.
-  *.user in .gitignore) - keep it personal and out of version control.
+  TEMPLATE - copy to TiltEm.props.user and edit KSPBT_GameRoot. The copy is ignored
+  by git (*.user), so it stays personal to your machine.
 
   KSPBuildTools auto-imports it via $(SolutionDir)$(SolutionName).props.user and
   uses KSPBT_GameRoot to resolve KSP's managed assemblies (KSP_x64_Data/Managed)

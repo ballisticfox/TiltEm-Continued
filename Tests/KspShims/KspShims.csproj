@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Stand-ins for the KSP and Unity types the tests touch, so the suite runs on a machine
+    with no KSP install. Faithfulness is not assumed: the same tests build against the real
+    assemblies with -p:KspRefs=real, and that run is the authority.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>KspShims</AssemblyName>
+    <RootNamespace></RootNamespace>
+  </PropertyGroup>
+
+</Project>

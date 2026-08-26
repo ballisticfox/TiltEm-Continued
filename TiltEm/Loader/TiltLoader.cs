@@ -1,7 +1,6 @@
-﻿using TiltEm;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace TiltEmKopernicus
+namespace TiltEm
 {
     /// <summary>
     /// Registers every body's configured tilt and orbital plane with Tilt'Em, once, as the space
@@ -9,7 +8,7 @@ namespace TiltEmKopernicus
     /// Properties node asked for.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.SpaceCentre, true)]
-    public class KopernicusLoader : MonoBehaviour
+    public class TiltLoader : MonoBehaviour
     {
         public void Awake()
         {
@@ -25,7 +24,7 @@ namespace TiltEmKopernicus
                 //disagreeing about which pole a body actually has.
                 if (TiltConfig.TryReadEffective(body, out BodyTilt tilt))
                 {
-                    TiltEm.TiltEm.AddTiltData(body, tilt);
+                    TiltEm.AddTiltData(body, tilt);
                     tilts++;
                 }
 
@@ -33,7 +32,7 @@ namespace TiltEmKopernicus
                 //camera looks it up on whichever body its walk up the tree lands on.
                 if (TiltConfig.TryReadOrbitalPlane(body, out BodyTilt plane))
                 {
-                    TiltEm.TiltEm.AddOrbitalPlane(body, plane);
+                    TiltEm.AddOrbitalPlane(body, plane);
                     planes++;
                 }
             }

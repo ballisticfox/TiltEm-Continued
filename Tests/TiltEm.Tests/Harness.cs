@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -12,7 +12,7 @@ namespace TiltEm.Verification
     /// </summary>
     public static class Harness
     {
-        private class Result
+        public class Result
         {
             public string Defect;
             public string Name;
@@ -20,8 +20,28 @@ namespace TiltEm.Verification
             public string Detail;
         }
 
-        private static readonly List<Result> Results = new List<Result>();
+        private static List<Result> Results = new List<Result>();
         private static string _section = "";
+
+        /// <summary>
+        /// Runs one group of checks in isolation and hands back what it recorded, so each
+        /// check can be surfaced as its own test rather than one pass/fail for the group.
+        /// </summary>
+        public static IReadOnlyList<Result> Capture(Action group)
+        {
+            List<Result> outer = Results;
+            Results = new List<Result>();
+
+            try
+            {
+                group();
+                return Results;
+            }
+            finally
+            {
+                Results = outer;
+            }
+        }
 
         public static void Section(string name)
         {

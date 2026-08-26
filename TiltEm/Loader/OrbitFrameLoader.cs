@@ -1,10 +1,9 @@
 ﻿using Kopernicus;
 using System;
-using TiltEm;
 using UnityEngine;
 using OrbitElements = TiltEm.TiltEmFrames.OrbitElements;
 
-namespace TiltEmKopernicus
+namespace TiltEm
 {
     /// <summary>
     /// Rewrites the orbits of bodies whose config asked for elements relative to their parent's

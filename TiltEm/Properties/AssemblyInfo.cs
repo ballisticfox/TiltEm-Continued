@@ -15,6 +15,9 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyVersion("2.0.0")]
 [assembly: AssemblyFileVersion("2.0.0")]
-[assembly: AssemblyInformationalVersion("2.0.0-compiled")]
+[assembly: AssemblyInformationalVersion("2.0.0")]
 
+//Hard dependency: KSP refuses to load an assembly whose declared dependency is missing,
+//which fails cleanly instead of throwing on the first Kopernicus type touched.
 [assembly: KSPAssembly("TiltEm", 2, 0, 0)]
+[assembly: KSPAssemblyDependency("Kopernicus", 1, 0)]

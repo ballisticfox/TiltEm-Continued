@@ -4,15 +4,20 @@ using Kopernicus.ConfigParser.BuiltinTypeParsers;
 using Kopernicus.ConfigParser.Enumerations;
 using Kopernicus.Configuration.Parsing;
 
-namespace TiltEmKopernicus
+namespace TiltEm
 {
+    /// <summary>
+    /// Adds Tilt'Em's fields to Kopernicus's Body -> Properties node: a body's tilt, and the
+    /// orbital plane of the system it heads.
+    /// </summary>
+    //Each key needs its own property for Kopernicus to bind to. TiltConfig decides which form
+    //wins when a body sets more than one.
     [RequireConfigType(ConfigType.Node)]
     [ParserTargetExternal("Body", "Properties", "Kopernicus")]
     public class TiltReader : BaseLoader
     {
-        // Preferred form: the body's north pole as a direction, the way the IAU publishes
-        // real obliquities. poleDec = 90 means no tilt.
-
+        /// <summary>Right ascension of the body's north pole, degrees. The preferred form, as
+        /// the IAU publishes real obliquities.</summary>
         [ParserTarget("poleRA")]
         public NumericParser<double> PoleRa
         {
@@ -20,6 +25,7 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("poleRA", value.Value);
         }
 
+        /// <summary>Declination of the body's north pole, degrees. 90 means no tilt.</summary>
         [ParserTarget("poleDec")]
         public NumericParser<double> PoleDec
         {
@@ -27,9 +33,8 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("poleDec", value.Value);
         }
 
-        // Legacy form: Unity Euler degrees. Kept so existing configs keep working; converted
-        // to an equivalent pole (plus prime meridian) on load.
-
+        /// <summary>Legacy tilt about Unity's X axis, degrees. Converted to a pole plus a prime
+        /// meridian on load, so existing configs keep working.</summary>
         [ParserTarget("tiltx")]
         public NumericParser<double> TiltX
         {
@@ -37,6 +42,7 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("tiltx", value.Value);
         }
 
+        /// <summary>Legacy tilt about Unity's Z axis, degrees. See <see cref="TiltX"/>.</summary>
         [ParserTarget("tiltz")]
         public NumericParser<double> TiltZ
         {
@@ -45,15 +51,10 @@ namespace TiltEmKopernicus
         }
 
         /// <summary>
-        /// Interpret this body's tilt as an obliquity from its OWN orbital plane rather than from
-        /// the celestial equator.
-        ///
-        /// With no tilt set alongside it, the body's equator ends up in its orbital plane - which
-        /// for a moon means its parent stays over the equator. With a tilt set, that tilt is the
-        /// obliquity in the astronomical sense: the lean away from the orbit normal.
-        ///
-        /// Off by default. The celestial frame is what KSP means and what a real-system pack
-        /// wants, since the IAU publishes poles that way.
+        /// When true, this body's tilt is read as obliquity from its orbital plane rather than
+        /// the celestial equator. Alone, it aligns the equator to the orbit; with a tilt, that
+        /// tilt becomes the lean from the orbit normal. Off by default. See section 8.2 of
+        /// Docs/TILT_MATHEMATICS.pdf.
         /// </summary>
         [ParserTarget("tiltRelativeToParent")]
         public NumericParser<bool> TiltRelativeToParent
@@ -62,11 +63,8 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("tiltRelativeToParent", value.Value);
         }
 
-        // The system's orbital plane, set on a star. Read by the map camera's "System up"
-        // rotation mode for every body that ultimately orbits this one. Both forms mirror the
-        // tilt forms above: a pole is the normal of the plane, and the legacy Euler pair is
-        // converted to the equivalent normal on load.
-
+        /// <summary>Right ascension of the normal to this star's system plane, degrees. Read by
+        /// the map camera's System up mode for every body that ultimately orbits it.</summary>
         [ParserTarget("orbitalPlaneRA")]
         public NumericParser<double> OrbitalPlaneRa
         {
@@ -74,6 +72,8 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("orbitalPlaneRA", value.Value);
         }
 
+        /// <summary>Declination of the normal to this star's system plane, degrees. 90 is the
+        /// celestial equator, which is the right answer for the stock system.</summary>
         [ParserTarget("orbitalPlaneDec")]
         public NumericParser<double> OrbitalPlaneDec
         {
@@ -81,6 +81,8 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("orbitalPlaneDec", value.Value);
         }
 
+        /// <summary>Legacy system plane about Unity's X axis, degrees. Converted to the
+        /// equivalent normal on load.</summary>
         [ParserTarget("orbitalPlaneX")]
         public NumericParser<double> OrbitalPlaneX
         {
@@ -88,6 +90,8 @@ namespace TiltEmKopernicus
             set => generatedBody.Set("orbitalPlaneX", value.Value);
         }
 
+        /// <summary>Legacy system plane about Unity's Z axis, degrees. See
+        /// <see cref="OrbitalPlaneX"/>.</summary>
         [ParserTarget("orbitalPlaneZ")]
         public NumericParser<double> OrbitalPlaneZ
         {

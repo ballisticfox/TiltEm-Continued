@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+
+  <!--
+    Deliberately does not import the repository-root Directory.Build.props. That file pins
+    net48 and C# 7.3 for the shipped mod and wires up KSPBuildTools; the tests are ordinary
+    modern projects and only borrow KSP's assemblies in the real-reference build.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+</Project>

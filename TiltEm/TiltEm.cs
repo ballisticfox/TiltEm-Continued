@@ -21,7 +21,7 @@ namespace TiltEm
 #endif
 
         /// <summary>
-        /// Default tilts, used when you don't run Kopernicus. These are in the legacy Euler
+        /// Built-in tilts, used for any body no config gives a tilt. These are in the legacy Euler
         /// format the mod originally shipped with and are converted to poles on load, so the
         /// numbers stay comparable with older versions and with hand-written TiltEm.cfg files.
         /// </summary>

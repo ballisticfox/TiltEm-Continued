@@ -1,18 +1,19 @@
 {
     "NAME":     "Tilt 'Em",
-    "URL":      "https://github.com/LunaMultiplayer/TiltEm/raw/master/Resources/TiltEm.version",
-    "DOWNLOAD": "https://github.com/LunaMultiplayer/TiltEm/releases/download/1.2.2/TiltEm.1.2.2.zip",
+    "URL":      "https://github.com/ballisticfox/TiltEm-Continued/raw/master/Resources/TiltEm.version",
+    "DOWNLOAD": "https://github.com/ballisticfox/TiltEm-Continued/releases/download/2.0.0/TiltEm.2.0.0.zip",
     "GITHUB": {
-        "USERNAME":   "LunaMultiplayer",
-        "REPOSITORY": "TiltEm"
+        "USERNAME":   "ballisticfox",
+        "REPOSITORY": "TiltEm-Continued"
     },
     "VERSION": {
-        "MAJOR": 1,
-        "MINOR": 4,
-        "PATCH": 1
+        "MAJOR": 2,
+        "MINOR": 0,
+        "PATCH": 0
     },
     "KSP_VERSION": {
         "MAJOR": 1,
-        "MINOR": 12
+        "MINOR": 12,
+        "PATCH": 5
     }
 }

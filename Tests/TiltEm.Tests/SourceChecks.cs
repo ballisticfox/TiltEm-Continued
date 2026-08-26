@@ -161,13 +161,13 @@ namespace TiltEm.Verification
         /// </summary>
         private static void ParentRelativeOrbitsAreWiredCorrectly()
         {
-            var tiltConfig = Read(Path.Combine("TiltEmKopernicus", "TiltConfig.cs"));
-            Present("I1", "TiltConfig reads the pole form first", tiltConfig, @"Has\(""poleRA""\)");
-            Present("I1", "TiltConfig falls back to the legacy Euler form", tiltConfig, @"Has\(""tiltx""\)");
+            var tiltConfig = Read(Path.Combine("TiltEm", "Config", "TiltConfig.cs"));
+            Present("I1", "TiltConfig prefers the pole form over the legacy Euler form", tiltConfig,
+                @"TryReadPole\(body, ""poleRA"", ""poleDec"", ""tiltx"", ""tiltz""");
 
-            foreach (var name in new[] { "KopernicusLoader.cs", "OrbitFrameLoader.cs" })
+            foreach (var name in new[] { "TiltLoader.cs", "OrbitFrameLoader.cs" })
             {
-                var text = StripComments(Read(Path.Combine("TiltEmKopernicus", name)));
+                var text = StripComments(Read(Path.Combine("TiltEm", "Loader", name)));
 
                 // TryReadEffective, not TryRead: tiltRelativeToParent changes what a given
                 // poleRA/poleDec pair means, so a caller on the raw read would be working from a
@@ -180,7 +180,7 @@ namespace TiltEm.Verification
             }
 
             Present("I2", "tiltRelativeToParent is declared on the Properties node",
-                Read(Path.Combine("TiltEmKopernicus", "TiltReader.cs")),
+                Read(Path.Combine("TiltEm", "Config", "TiltReader.cs")),
                 @"ParserTarget\(""tiltRelativeToParent""\)");
             Present("I2", "the rebase composes the parent's tilt onto the body's", tiltConfig,
                 @"TiltEmFrames\.ToCelestialTilt\(parentTilt,");
@@ -189,12 +189,12 @@ namespace TiltEm.Verification
             Present("I2", "a body with no parent is warned about, not silently rebased", tiltConfig,
                 @"ReferenceEquals\(parent, body\)[\s\S]{0,300}?LogWarning");
 
-            var reader = Read(Path.Combine("TiltEmKopernicus", "OrbitReader.cs"));
+            var reader = Read(Path.Combine("TiltEm", "Config", "OrbitReader.cs"));
             Present("I1", "relativeToParent is declared on the Orbit node", reader,
                 @"ParserTargetExternal\(""Body"",\s*""Orbit""");
             Present("I1", "relativeToParent is a ParserTarget", reader, @"ParserTarget\(""relativeToParent""\)");
 
-            var loader = StripComments(Read(Path.Combine("TiltEmKopernicus", "OrbitFrameLoader.cs")));
+            var loader = StripComments(Read(Path.Combine("TiltEm", "Loader", "OrbitFrameLoader.cs")));
             Present("I1", "the rebase runs on the system prefab, via OnPostLoad", loader,
                 @"Events\.OnPostLoad\.Add");
             Absent("I1", "the rebase does not re-Init a live orbit", loader, @"\.Init\s*\(\s*\)");
@@ -266,16 +266,15 @@ namespace TiltEm.Verification
             Present("G6", "a scene change adopts the new axis outright", tiltEmSrc,
                 @"MapCamera\.ResetMapNorth\(\);[\s\S]{0,400}?data\.to\s*<\s*GameScenes\.SPACECENTER");
 
-            var reader = Read(Path.Combine("TiltEmKopernicus", "TiltConfig.cs"));
-            Present("G5", "TiltConfig reads the orbital plane pole form first", reader,
-                @"Has\(""orbitalPlaneRA""\)");
-            Present("G5", "and falls back to the legacy pair", reader, @"Has\(""orbitalPlaneX""\)");
+            var reader = Read(Path.Combine("TiltEm", "Config", "TiltConfig.cs"));
+            Present("G5", "the orbital plane prefers the pole form over the legacy pair", reader,
+                @"TryReadPole\(body, ""orbitalPlaneRA"", ""orbitalPlaneDec"",[\s\S]{0,40}?""orbitalPlaneX"", ""orbitalPlaneZ""");
 
             //G8. The stock system needs an explicit plane, because the fallback - the star's own
             //tilt - is 7.57 degrees away from the plane its planets actually orbit in. Both the
-            //no-Kopernicus defaults and the shipped example config have to carry it, since a
-            //player may be running either.
-            Present("G8", "the no-Kopernicus defaults seed a system plane", tiltEmSrc,
+            //built-in defaults and the shipped example config have to carry it, since a body
+            //may get its plane from either.
+            Present("G8", "the built-in defaults seed a system plane", tiltEmSrc,
                 @"BuildDefaultOrbitalPlanes\(\)");
             Present("G8", "and seed it for the stock star as the celestial pole", tiltEmSrc,
                 @"\[""Sun""\]\s*=\s*TiltEmFrames\.Untilted");
@@ -385,20 +384,17 @@ namespace TiltEm.Verification
         /// <summary>Concatenates every production .cs file, so a check covers the whole mod.</summary>
         private static string ReadAllModSources()
         {
+            var path = Path.Combine(_root, "TiltEm");
+            if (!Directory.Exists(path)) return "";
+
             var text = "";
-            foreach (var dir in new[] { "TiltEm", "TiltEmKopernicus" })
+            foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
             {
-                var path = Path.Combine(_root, dir);
-                if (!Directory.Exists(path)) continue;
+                // Skip build output.
+                if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)) continue;
+                if (file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)) continue;
 
-                foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
-                {
-                    // Skip build output.
-                    if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)) continue;
-                    if (file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)) continue;
-
-                    text += StripComments(File.ReadAllText(file)) + "\n";
-                }
+                text += StripComments(File.ReadAllText(file)) + "\n";
             }
 
             return text;

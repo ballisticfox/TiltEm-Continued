@@ -5,8 +5,6 @@
     <AssemblyName>TiltEm</AssemblyName>
     <RootNamespace>TiltEm</RootNamespace>
     <OutputType>Library</OutputType>
-    <!-- CS0649: fields assigned by reflection (see Event/TiltEmBaseEvent.cs) -->
-    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +15,15 @@
   <ItemGroup>
     <ModReference Include="0Harmony">
       <DLLPath>GameData/000_Harmony/0Harmony.dll</DLLPath>
+    </ModReference>
+    <ModReference Include="Kopernicus">
+      <DLLPath>GameData/Kopernicus/Plugins/Kopernicus.dll</DLLPath>
+    </ModReference>
+    <ModReference Include="Kopernicus.Parser">
+      <DLLPath>GameData/Kopernicus/Plugins/Kopernicus.Parser.dll</DLLPath>
+    </ModReference>
+    <ModReference Include="ModularFlightIntegrator">
+      <DLLPath>GameData/ModularFlightIntegrator/ModularFlightIntegrator.dll</DLLPath>
     </ModReference>
   </ItemGroup>
 

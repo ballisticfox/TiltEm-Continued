@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Two reference sets, one body of tests.
+
+        dotnet test                          KSP stand-ins, runs anywhere (CI)
+        dotnet test -p:KspRefs=real          the real KSP assemblies (authoritative)
+
+    The shim build is the one CI can run; the real build is what proves the stand-ins have
+    not drifted from the game. Keep both green.
+  -->
+
+  <Import Project="$(MSBuildThisFileDirectory)../../TiltEm.props.user"
+          Condition="Exists('$(MSBuildThisFileDirectory)../../TiltEm.props.user')" />
+
+  <PropertyGroup>
+    <KspRefs Condition=" '$(KspRefs)' == '' ">shims</KspRefs>
+    <TargetFramework Condition=" '$(KspRefs)' == 'real' ">net48</TargetFramework>
+    <TargetFramework Condition=" '$(KspRefs)' != 'real' ">net8.0</TargetFramework>
+    <AssemblyName>TiltEm.Tests</AssemblyName>
+    <RootNamespace>TiltEm.Verification</RootNamespace>
+    <KSPManagedPath>$(KSPBT_GameRoot)\KSP_x64_Data\Managed</KSPManagedPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!-- Production code under test, compiled from its real location -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Frames/TiltEmFrames.cs">
+      <Link>production/TiltEmFrames.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+  <!-- Stand-in types. Benchmarks needs frame members the shims deliberately omit. -->
+  <ItemGroup Condition=" '$(KspRefs)' != 'real' ">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../KspShims/KspShims.csproj" />
+    <Compile Remove="Benchmarks.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(KspRefs)' == 'real' ">
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(KSPManagedPath)\Assembly-CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(KSPManagedPath)\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(KSPManagedPath)\UnityEngine.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(KSPManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateKspManagedPath" BeforeTargets="BeforeBuild" Condition=" '$(KspRefs)' == 'real' ">
+    <Error Condition=" '$(KSPBT_GameRoot)' == '' "
+           Text="KspRefs=real needs a KSP install. Copy TiltEm.props.user.example to TiltEm.props.user in the repository root and point KSPBT_GameRoot at it." />
+    <Error Condition="!Exists('$(KSPManagedPath)')"
+           Text="KSP managed assemblies not found at '$(KSPManagedPath)'. Check KSPBT_GameRoot in TiltEm.props.user (currently '$(KSPBT_GameRoot)')." />
+  </Target>
+
+</Project>

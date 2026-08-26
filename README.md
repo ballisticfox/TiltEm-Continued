@@ -16,9 +16,11 @@ If you would like to read more about the mathematics of Tilt'Em, you can read ab
 
 # Installation
 
+Tilt'Em requires [Kopernicus](https://github.com/Kopernicus/Kopernicus/releases).
+
 1) Go to the [latest release](../../releases/latest) page and download the zip file
 2) Decompress the downloaded .zip into your KSP folder
-3) If you want to edit the default tilts, you need to install Kopernicus and edit the `GameData\TiltEm\TiltEm.cfg` file. It follows the same rules as any Kopernicus .cfg file
+3) To edit the tilts, edit the `GameData\TiltEm\TiltEm.cfg` file. It follows the same rules as any Kopernicus .cfg file
 
 
 # Usage in game

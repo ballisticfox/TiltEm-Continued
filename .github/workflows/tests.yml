@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Stand-in KSP types, so this needs no game install. The run against the real
+      # assemblies is the authority and happens locally: dotnet test -p:KspRefs=real
+      - name: Test
+        run: dotnet test Tests/TiltEm.Tests/TiltEm.Tests.csproj --configuration Release
