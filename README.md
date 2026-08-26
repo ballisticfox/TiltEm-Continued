@@ -62,7 +62,7 @@ On stars, you can also specify a `orbitalPlaneRA` or `orbitalPlaneDec` / `orbita
 
 # Credits & Licenses
 
-I would like to thank Gabriel Vazquez (the original developer) for making a valiant effort towards solving this problem.
+I would like to thank Dagger for making a valiant effort towards solving this problem.
 
 I would also like to thank my discord community and the planet modding community for playtesting this mod before release.
 
