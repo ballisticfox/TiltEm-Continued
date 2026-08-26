@@ -1,0 +1,76 @@
+﻿using UnityEngine;
+
+namespace TiltEm
+{
+    /// <summary>
+    /// Which axis the map and tracking-station camera treats as up, and the easing toward it.
+    /// Session state only; not persisted across saves.
+    /// </summary>
+    public static class MapCamera
+    {
+        /// <summary>
+        /// How fast the up axis chases a new target, in reciprocal seconds.
+        /// </summary>
+        private const float MapNorthSharpness = 10f;
+
+        /// <summary>Below this, snap rather than animate the remainder.</summary>
+        private const float MapNorthSnapDegrees = 0.01f;
+
+        //Vector3.zero means "nothing established yet". A real up axis is a unit vector, so it
+        //never collides with the default.
+        private static Vector3 _mapNorth = Vector3.zero;
+
+        public static MapCameraRotation MapRotation { get; private set; } = MapCameraRotation.PoleUp;
+
+        public static void ToggleMapRotation()
+        {
+            MapRotation = MapRotation == MapCameraRotation.PoleUp
+                ? MapCameraRotation.SystemUp
+                : MapCameraRotation.PoleUp;
+
+            ScreenMessages.PostScreenMessage("Rotation: " + MapRotationName(MapRotation), 3f,
+                ScreenMessageStyle.UPPER_CENTER);
+        }
+
+        private static string MapRotationName(MapCameraRotation rotation)
+        {
+            return rotation == MapCameraRotation.SystemUp ? "System up" : "Pole up";
+        }
+
+        /// <summary>
+        /// Eases the up axis toward <paramref name="target"/>, so switching rotation mode or
+        /// focusing a different body swings rather than cuts.
+        /// Uses 1 - exp(-k dt) rather than k * dt for frame-rate independence.
+        /// </summary>
+        public static Vector3 SmoothMapNorth(Vector3 target)
+        {
+            //First frame, or the first after a scene change. Easing from the default would swing
+            //the camera up out of nowhere every time the map opens.
+            if (_mapNorth == Vector3.zero)
+            {
+                _mapNorth = target;
+                return _mapNorth;
+            }
+
+            if (Vector3.Angle(_mapNorth, target) < MapNorthSnapDegrees)
+            {
+                _mapNorth = target;
+                return _mapNorth;
+            }
+
+            float step = 1f - Mathf.Exp(-MapNorthSharpness * Time.unscaledDeltaTime);
+            _mapNorth = Vector3.Slerp(_mapNorth, target, step).normalized;
+
+            return _mapNorth;
+        }
+
+        /// <summary>
+        /// Drops the eased axis so the next frame adopts its target outright.
+        /// Called on scene loads to avoid easing across a planetarium rebuild.
+        /// </summary>
+        public static void ResetMapNorth()
+        {
+            _mapNorth = Vector3.zero;
+        }
+    }
+}

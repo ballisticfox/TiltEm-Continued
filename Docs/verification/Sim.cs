@@ -107,7 +107,7 @@ namespace TiltEm.Verification
         /// </summary>
         public bool SuppressReanchor;
 
-        /// <summary>Mirrors TiltEm.EnsureZupAnchor.</summary>
+        /// <summary>Mirrors PlanetariumAnchor.EnsureZupAnchor.</summary>
         private void EnsureZupAnchor(SimBody body)
         {
             if (SuppressReanchor) return;
@@ -121,7 +121,7 @@ namespace TiltEm.Verification
             _zupAnchorBody = body.Name;
         }
 
-        /// <summary>Mirrors TiltEm.ReleaseZupAnchor.</summary>
+        /// <summary>Mirrors PlanetariumAnchor.ReleaseZupAnchor.</summary>
         private void ReleaseZupAnchor(SimBody body)
         {
             if (KeepStaleAnchor) return;
@@ -160,7 +160,7 @@ namespace TiltEm.Verification
         }
 
         /// <summary>
-        /// Mirrors TiltEm.ResetZupAnchor, which runs from the onGameSceneSwitchRequested
+        /// Mirrors PlanetariumAnchor.ResetZupAnchor, which runs from the onGameSceneSwitchRequested
         /// handler. Every load goes through it: quickload, loading a save from the main menu,
         /// and every ordinary scene change.
         ///
@@ -228,7 +228,7 @@ namespace TiltEm.Verification
         /// </summary>
         public bool UnlatchedZupAtTUsesTheResetOrigin;
 
-        /// <summary>The body currently holding the anchor, or null. Mirrors TiltEm.ZupAnchorBody.</summary>
+        /// <summary>The body currently holding the anchor, or null. Mirrors PlanetariumAnchor.ZupAnchorBody.</summary>
         public string AnchorBody
         {
             get { return _zupAnchorBody; }
@@ -239,7 +239,7 @@ namespace TiltEm.Verification
             return _zupAnchorBody == name;
         }
 
-        /// <summary>Mirrors TiltEm.MayHoldRotatingFrame.</summary>
+        /// <summary>Mirrors PlanetariumAnchor.MayHoldRotatingFrame.</summary>
         public bool MayHoldRotatingFrame(SimBody body)
         {
             if (body == null) return false;

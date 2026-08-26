@@ -45,7 +45,7 @@
 
   <!-- Production code under test, compiled from its real location -->
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/TiltEmFrames.cs">
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Frames/TiltEmFrames.cs">
       <Link>production/TiltEmFrames.cs</Link>
     </Compile>
   </ItemGroup>

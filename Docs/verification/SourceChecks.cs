@@ -35,15 +35,15 @@ namespace TiltEm.Verification
         /// </summary>
         private static void TheRotatingFrameSurvivesAnSoiChange()
         {
-            var cbUpdate = StripComments(Read(Path.Combine("TiltEm", "Harmony", "CelestialBody_CBUpdate.cs")));
-            var tiltEm = StripComments(Read(Path.Combine("TiltEm", "TiltEm.cs")));
-            var handover = StripComments(Read(Path.Combine("TiltEm", "Harmony", "OrbitPhysicsManager_SetDominantBody.cs")));
+            var cbUpdate = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Frames", "CelestialBody_CBUpdate.cs")));
+            var anchor = StripComments(Read(Path.Combine("TiltEm", "Frames", "PlanetariumAnchor.cs")));
+            var handover = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Frames", "OrbitPhysicsManager_SetDominantBody.cs")));
 
             Present("L2", "CBUpdate gates the rotating branch on entitlement", cbUpdate,
-                @"body\.inverseRotation && TiltEm\.MayHoldRotatingFrame\(body\)");
-            Present("L2", "the dominant body is the authority when there is one", tiltEm,
+                @"body\.inverseRotation && PlanetariumAnchor\.MayHoldRotatingFrame\(body\)");
+            Present("L2", "the dominant body is the authority when there is one", anchor,
                 @"OrbitPhysicsManager\.DominantBody");
-            Present("L3", "and an absent one falls back to the anchor holder", tiltEm,
+            Present("L3", "and an absent one falls back to the anchor holder", anchor,
                 @"ZupAnchorBody == null \|\| ReferenceEquals\(ZupAnchorBody, body\)");
 
             //The outgoing body has to be read before the original runs; setDominantBody assigns
@@ -53,7 +53,7 @@ namespace TiltEm.Verification
             Present("L1", "the handover ends the outgoing rotating frame", handover,
                 @"outgoing\.inverseRotation = false");
             Present("L1", "and releases its anchor whether or not it cleared the flag", handover,
-                @"TiltEm\.ReleaseZupAnchor\(outgoing\)");
+                @"PlanetariumAnchor\.ReleaseZupAnchor\(outgoing\)");
         }
 
         /// <summary>
@@ -64,10 +64,10 @@ namespace TiltEm.Verification
         /// </summary>
         private static void TheAnchoredZupIsKeyedToItsOwnBody()
         {
-            var zupAtT = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Planetarium_ZupAtT.cs")));
+            var zupAtT = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Frames", "Planetarium_ZupAtT.cs")));
 
             Present("K1", "ZupAtT resolves the body that owns the anchor", zupAtT,
-                @"TiltEm\.ZupAnchorBody");
+                @"PlanetariumAnchor\.ZupAnchorBody");
 
             //The elapsed rotation has to come from the anchor's body, since that is the rotation
             //Zup is actually following. Advancing the caller's instead is the 839 km failure.
@@ -87,7 +87,7 @@ namespace TiltEm.Verification
             Present("M4", "paired with the angle that anchor was taken at", zupAtT,
                 @"anchorRotationAngle = body\.rotationAngle");
             Absent("M4", "the stored pair is not used directly", zupAtT,
-                @"TiltEmFrames\.Zup\(TiltEm\.ZupAnchor,");
+                @"TiltEmFrames\.Zup\(PlanetariumAnchor\.ZupAnchor,");
         }
 
         /// <summary>
@@ -102,7 +102,7 @@ namespace TiltEm.Verification
         /// </summary>
         private static void ElementReadoutsAreWiredCorrectly()
         {
-            var shared = StripComments(Read(Path.Combine("TiltEm", "ParentRelativeOrbit.cs")));
+            var shared = StripComments(Read(Path.Combine("TiltEm", "Frames", "ParentRelativeOrbit.cs")));
 
             //A readout holds a celestial orbit and needs the parent-relative numbers, so it
             //takes the tilt off; an input holds what the player typed and needs it put on.
@@ -117,7 +117,7 @@ namespace TiltEm.Verification
                 @"return !tilt\.IsIdentity");
             Present("J1", "and the input", shared, @"tilt\.IsIdentity\) return false");
 
-            var editor = StripComments(Read(Path.Combine("TiltEm", "Harmony",
+            var editor = StripComments(Read(Path.Combine("TiltEm", "Harmony", "UI",
                 "ManeuverNodeEditorTabOrbitAdv_UpdateUIElements.cs")));
 
             Present("J1", "the maneuver editor patch reads the parent-relative elements", editor,
@@ -130,7 +130,7 @@ namespace TiltEm.Verification
             Present("J1", "it corrects the orbit stock actually displayed", editor,
                 @"FieldRefAccess<ManeuverNodeEditorTabOrbitAdv, Orbit>\(""orbitToDisplay""\)");
 
-            var setOrbit = StripComments(Read(Path.Combine("TiltEm", "Harmony",
+            var setOrbit = StripComments(Read(Path.Combine("TiltEm", "Harmony", "UI",
                 "FlightGlobals_SetShipOrbit.cs")));
 
             Present("J1", "the Set Orbit patch converts the entered elements", setOrbit,
@@ -208,34 +208,36 @@ namespace TiltEm.Verification
         private static void CamerasUseTheRightPole()
         {
             var tiltEm = Read(Path.Combine("TiltEm", "TiltEm.cs"));
+            var bodyAxes = StripComments(Read(Path.Combine("TiltEm", "Camera", "BodyAxes.cs")));
 
-            Present("G2", "CelestialNorth reads the tilt's own pole", tiltEm,
+            Present("G2", "CelestialNorth reads the tilt's own pole", bodyAxes,
                 @"CelestialNorth[\s\S]{0,1200}?tilt\.Tilt\.Z\.xzy");
-            Present("G3", "WorldNorth reads BodyFrame's pole", tiltEm,
+            Present("G3", "WorldNorth reads BodyFrame's pole", bodyAxes,
                 @"WorldNorth[\s\S]{0,1200}?body\.BodyFrame\.Z\.xzy");
 
-            var mapCamera = Read(Path.Combine("TiltEm", "Harmony", "PlanetariumCamera_LateUpdate.cs"));
-            Present("G2", "the map camera asks for the celestial pole", mapCamera, @"TiltEm\.CelestialNorth\s*\(");
-            Absent("G2", "the map camera does not use the world pole", mapCamera, @"TiltEm\.WorldNorth\s*\(");
+            var mapCamera = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "PlanetariumCamera_LateUpdate.cs")));
+            Present("G2", "the map camera asks for the celestial pole", mapCamera, @"BodyAxes\.CelestialNorth\s*\(");
+            Absent("G2", "the map camera does not use the world pole", mapCamera, @"BodyAxes\.WorldNorth\s*\(");
 
             // G5. The tree walk and the key gating need a live game, so pin them here.
             var tiltEmSrc = StripComments(tiltEm);
+            var mapNorth = StripComments(Read(Path.Combine("TiltEm", "Camera", "MapCamera.cs")));
 
-            Present("G5", "SystemNorth walks up to the star", tiltEmSrc, @"StarFor\s*\(");
-            Present("G5", "the walk terminates on a self-referencing parent", tiltEmSrc,
+            Present("G5", "SystemNorth walks up to the star", bodyAxes, @"StarFor\s*\(");
+            Present("G5", "the walk terminates on a self-referencing parent", bodyAxes,
                 @"ReferenceEquals\(parent,\s*current\)");
-            Present("G5", "an unconfigured plane falls back to the star's pole", tiltEmSrc,
+            Present("G5", "an unconfigured plane falls back to the star's pole", bodyAxes,
                 @"TryGetOrbitalPlane[\s\S]{0,200}?return CelestialNorth\(star\)");
             Present("G5", "the toggle is gated on the map being up", tiltEmSrc,
                 @"MapViewIsUp\(\)\s*\)\s*return");
             Present("G5", "and on camera controls being unlocked", tiltEmSrc,
                 @"IsUnlocked\(ControlTypes\.CAMERACONTROLS\)");
 
-            var mapCam = StripComments(Read(Path.Combine("TiltEm", "Harmony", "PlanetariumCamera_LateUpdate.cs")));
+            var mapCam = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "PlanetariumCamera_LateUpdate.cs")));
             Present("G5", "the map camera honours the rotation mode", mapCam,
-                @"MapCameraRotation\.SystemUp[\s\S]{0,120}?TiltEm\.SystemNorth");
+                @"MapCameraRotation\.SystemUp[\s\S]{0,120}?BodyAxes\.SystemNorth");
             Present("G5", "and still uses the body pole in the other mode", mapCam,
-                @"TiltEm\.CelestialNorth\s*\(");
+                @"BodyAxes\.CelestialNorth\s*\(");
 
             //G7. The correction has to be substituted where stock computes endRot, not applied
             //after LateUpdate has finished. A postfix samples the pitch axis after
@@ -257,12 +259,12 @@ namespace TiltEm.Verification
 
             // G6. The ease itself is verified numerically; these pin the two decisions in it that
             // a numeric check cannot see.
-            Present("G6", "the up axis is eased, not taken raw", mapCam, @"TiltEm\.SmoothMapNorth\s*\(");
-            Present("G6", "the ease is frame-rate independent, not k * dt", tiltEmSrc,
+            Present("G6", "the up axis is eased, not taken raw", mapCam, @"MapCamera\.SmoothMapNorth\s*\(");
+            Present("G6", "the ease is frame-rate independent, not k * dt", mapNorth,
                 @"1f\s*-\s*Mathf\.Exp\(-MapNorthSharpness\s*\*\s*Time\.unscaledDeltaTime\)");
-            Present("G6", "directions are slerped, not lerped", tiltEmSrc, @"Vector3\.Slerp\(_mapNorth");
+            Present("G6", "directions are slerped, not lerped", mapNorth, @"Vector3\.Slerp\(_mapNorth");
             Present("G6", "a scene change adopts the new axis outright", tiltEmSrc,
-                @"ResetMapNorth\(\);[\s\S]{0,400}?data\.to\s*<\s*GameScenes\.SPACECENTER");
+                @"MapCamera\.ResetMapNorth\(\);[\s\S]{0,400}?data\.to\s*<\s*GameScenes\.SPACECENTER");
 
             var reader = Read(Path.Combine("TiltEmKopernicus", "TiltConfig.cs"));
             Present("G5", "TiltConfig reads the orbital plane pole form first", reader,
@@ -288,7 +290,7 @@ namespace TiltEm.Verification
             //whichever LateUpdate draws a line first, and every Vectrosity consumer in KSP draws
             //from its own. Dropping it once each camera has settled is what makes the lazy fill
             //land after the pose is final. Soft dependency: resolved by name, no-op when absent.
-            var cache = StripComments(Read(Path.Combine("TiltEm", "Harmony", "VectorLineProjectionCache.cs")));
+            var cache = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "VectorLineProjectionCache.cs")));
             Present("G7", "the projection cache is dropped after the map camera moves", cache,
                 @"HarmonyPatch\(typeof\(PlanetariumCamera\)\)[\s\S]{0,400}?VectorLineProjectionCache\.Invalidate");
             Present("G7", "and after the scaled camera moves", cache,
@@ -298,9 +300,9 @@ namespace TiltEm.Verification
             Present("G7", "and a missing cache is a no-op", cache,
                 @"if \(_lastCachedFrame == null\) return;");
 
-            var flightCamera = Read(Path.Combine("TiltEm", "Harmony", "FlightGlobals_GetFoR.cs"));
-            Present("G3", "the orbital camera asks for the world pole", flightCamera, @"TiltEm\.WorldNorth\s*\(");
-            Absent("G3", "the orbital camera does not use the celestial pole", flightCamera, @"TiltEm\.CelestialNorth\s*\(");
+            var flightCamera = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "FlightGlobals_GetFoR.cs")));
+            Present("G3", "the orbital camera asks for the world pole", flightCamera, @"BodyAxes\.WorldNorth\s*\(");
+            Absent("G3", "the orbital camera does not use the celestial pole", flightCamera, @"BodyAxes\.CelestialNorth\s*\(");
             Present("G3", "the camera patch touches only OBT_ABS and SRF_NORTH", flightCamera,
                 @"mode\s*!=\s*FoRModes\.OBT_ABS\s*&&\s*mode\s*!=\s*FoRModes\.SRF_NORTH\s*\)\s*return");
             Absent("G3", "no other frame-of-reference mode is touched", flightCamera,
@@ -344,7 +346,7 @@ namespace TiltEm.Verification
         /// <summary>D2, D3. Lines the replacement CBUpdate used to drop or hardcode.</summary>
         private static void CbUpdateRestoresStockFidelity()
         {
-            var cbUpdate = Read(Path.Combine("TiltEm", "Harmony", "CelestialBody_CBUpdate.cs"));
+            var cbUpdate = Read(Path.Combine("TiltEm", "Harmony", "Frames", "CelestialBody_CBUpdate.cs"));
 
             Present("D2", "CBUpdate sets transformRight", cbUpdate, @"transformRight\s*=");
             Present("D2", "CBUpdate sets transformUp", cbUpdate, @"transformUp\s*=");
@@ -360,9 +362,9 @@ namespace TiltEm.Verification
         /// </summary>
         private static void FrameMathIsFloatFree()
         {
-            var frames = Read(Path.Combine("TiltEm", "TiltEmFrames.cs"));
-            var cbUpdate = Read(Path.Combine("TiltEm", "Harmony", "CelestialBody_CBUpdate.cs"));
-            var zupAtT = Read(Path.Combine("TiltEm", "Harmony", "Planetarium_ZupAtT.cs"));
+            var frames = Read(Path.Combine("TiltEm", "Frames", "TiltEmFrames.cs"));
+            var cbUpdate = Read(Path.Combine("TiltEm", "Harmony", "Frames", "CelestialBody_CBUpdate.cs"));
+            var zupAtT = Read(Path.Combine("TiltEm", "Harmony", "Frames", "Planetarium_ZupAtT.cs"));
 
             // "Quaternion" not followed by "D", and not inside a comment reference.
             const string floatQuaternion = @"(?<!\w)Quaternion(?!D)\s*[\.\(]";

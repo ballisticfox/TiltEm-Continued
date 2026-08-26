@@ -310,7 +310,7 @@ namespace TiltEm.Verification
         /// the cross-body teleport with the re-anchor suppressed, leaving the Mun to build Zup
         /// out of Kerbin's anchor and Kerbin's anchored rotation angle.
         ///
-        /// That is not a hypothetical shape. Planetarium_ZupAtT reads TiltEm.ZupAnchor for
+        /// That is not a hypothetical shape. Planetarium_ZupAtT reads PlanetariumAnchor.ZupAnchor for
         /// whatever body it is handed without checking the anchor belongs to it, so any path that
         /// leaves a body inverse-rotating while a different one holds the anchor lands exactly
         /// here. It has to move the ground; if it ever stops doing so, the checks above are

@@ -50,10 +50,7 @@ namespace TiltEm.Verification
             foreach (var lan in lans)
             foreach (var arg in args)
             {
-                all[i].Inclination = inc;
-                all[i].LongitudeOfAscendingNode = lan;
-                all[i].ArgumentOfPeriapsis = arg;
-                i++;
+                all[i++] = new TiltEmFrames.OrbitElements(inc, lan, arg);
             }
 
             return all;
@@ -178,10 +175,7 @@ namespace TiltEm.Verification
             foreach (var parent in Parents())
             {
                 //Ninety degrees to the parent's equator, in the parent's own frame.
-                TiltEmFrames.OrbitElements polar;
-                polar.Inclination = 90.0;
-                polar.LongitudeOfAscendingNode = 0.0;
-                polar.ArgumentOfPeriapsis = 0.0;
+                var polar = new TiltEmFrames.OrbitElements(90.0, 0.0, 0.0);
 
                 var stored = TiltEmFrames.ToCelestialElements(parent, polar);
                 var shown = TiltEmFrames.ToLocalElements(parent, stored);
@@ -205,10 +199,7 @@ namespace TiltEm.Verification
             {
                 if (parent.IsIdentity) continue;
 
-                TiltEmFrames.OrbitElements celestialEquator;
-                celestialEquator.Inclination = 0.0;
-                celestialEquator.LongitudeOfAscendingNode = 0.0;
-                celestialEquator.ArgumentOfPeriapsis = 0.0;
+                var celestialEquator = new TiltEmFrames.OrbitElements(0.0, 0.0, 0.0);
 
                 var shown = TiltEmFrames.ToLocalElements(parent, celestialEquator);
 
@@ -252,10 +243,7 @@ namespace TiltEm.Verification
                 foreach (var inc in new[] { 0.0, 180.0 })
                 foreach (var lan in new[] { 0.0, 47.5, 190.0, 312.25 })
                 {
-                    TiltEmFrames.OrbitElements degenerate;
-                    degenerate.Inclination = inc;
-                    degenerate.LongitudeOfAscendingNode = lan;
-                    degenerate.ArgumentOfPeriapsis = 0.0;
+                    var degenerate = new TiltEmFrames.OrbitElements(inc, lan, 0.0);
 
                     var built = TiltEmFrames.OrbitalFrame(degenerate);
 
@@ -291,10 +279,7 @@ namespace TiltEm.Verification
 
                 foreach (var inc in new[] { 0.0, 180.0 })
                 {
-                    TiltEmFrames.OrbitElements degenerate;
-                    degenerate.Inclination = inc;
-                    degenerate.LongitudeOfAscendingNode = 190.0;
-                    degenerate.ArgumentOfPeriapsis = 0.0;
+                    var degenerate = new TiltEmFrames.OrbitElements(inc, 190.0, 0.0);
 
                     var product = TiltEmFrames.Multiply(parent.Tilt,
                         TiltEmFrames.Multiply(parent.TiltTranspose,

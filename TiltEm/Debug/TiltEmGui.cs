@@ -151,22 +151,15 @@ namespace TiltEm
             {
                 var body = FlightGlobals.Bodies[i];
 
-                if (i == FlightGlobals.Bodies.Count - 1)
-                {
-                    Builder.Append($"{body.bodyName}: T: {TiltEm.GetTiltForDisplay(body.bodyName)}° " +
-                                   $"- Rot: {((Quaternion)body.transform.rotation).eulerAngles} " +
-                                   $"- Frm: {((Quaternion)body.BodyFrame.Rotation).eulerAngles} " +
-                                   $"- Rot °: {body.rotationAngle:F2} " +
-                                   $"- Direct rot°: {body.directRotAngle:F2}");
-                }
-                else
-                {
-                    Builder.AppendLine($"{body.bodyName}: T: {TiltEm.GetTiltForDisplay(body.bodyName)}° " +
-                                       $"- Rot: {((Quaternion)body.transform.rotation).eulerAngles} " +
-                                       $"- Frm: {((Quaternion)body.BodyFrame.Rotation).eulerAngles} " +
-                                       $"- Rot °: {body.rotationAngle:F2} " +
-                                       $"- Direct rot°: {body.directRotAngle:F2}");
-                }
+                //Separator before rather than terminator after, so the last body ends the string
+                //without a trailing blank line.
+                if (i > 0) Builder.AppendLine();
+
+                Builder.Append($"{body.bodyName}: T: {TiltEm.GetTiltForDisplay(body.bodyName)}° " +
+                               $"- Rot: {((Quaternion)body.transform.rotation).eulerAngles} " +
+                               $"- Frm: {((Quaternion)body.BodyFrame.Rotation).eulerAngles} " +
+                               $"- Rot °: {body.rotationAngle:F2} " +
+                               $"- Direct rot°: {body.directRotAngle:F2}");
             }
 
             return Builder.ToString();
@@ -175,28 +168,33 @@ namespace TiltEm
         private static string GetVesselData()
         {
             Builder.Length = 0;
-            Builder.Append("Vessel obt mode: ");
-            Builder.AppendLine(FlightGlobals.ActiveVessel != null ? FlightGlobals.ActiveVessel.orbitDriver.updateMode.ToString() : string.Empty);
 
-            Builder.Append("Vessel obt transform rot: ");
-            Builder.AppendLine((FlightGlobals.ActiveVessel != null ? FlightGlobals.ActiveVessel.orbitDriver.driverTransform.rotation.eulerAngles : Vector3.zero).ToString());
+            var vessel = FlightGlobals.ActiveVessel;
 
-            Builder.Append("Vessel obt frm: ");
-            Builder.AppendLine((FlightGlobals.ActiveVessel != null ? ((Quaternion)FlightGlobals.ActiveVessel.orbit.OrbitFrame.Rotation).eulerAngles : Vector3.zero).ToString());
+            if (vessel == null)
+            {
+                Builder.AppendLine("No active vessel.");
+            }
+            else
+            {
+                Row("Vessel obt mode", vessel.orbitDriver.updateMode);
+                Row("Vessel obt transform rot", vessel.orbitDriver.driverTransform.rotation.eulerAngles);
+                Row("Vessel obt frm", ((Quaternion)vessel.orbit.OrbitFrame.Rotation).eulerAngles);
+                Row("Vessel rot", vessel.vesselTransform.rotation.eulerAngles);
+                Row("Vessel srf Rel Rot", vessel.srfRelRotation.eulerAngles);
+                Row("Vessel pos", vessel.vesselTransform.position);
+            }
 
-            Builder.Append("Vessel rot: ");
-            Builder.AppendLine((FlightGlobals.ActiveVessel != null ? FlightGlobals.ActiveVessel.vesselTransform.rotation.eulerAngles : Vector3.zero).ToString());
-            
-            Builder.Append("Vessel srf Rel Rot: ");
-            Builder.AppendLine((FlightGlobals.ActiveVessel != null ? FlightGlobals.ActiveVessel.srfRelRotation.eulerAngles : Vector3.zero).ToString());
-            
-            Builder.Append("Vessel pos: ");
-            Builder.AppendLine((FlightGlobals.ActiveVessel != null ? FlightGlobals.ActiveVessel.vesselTransform.position : Vector3.zero).ToString());
-            
+            //Outside the vessel block: the frame velocity is Krakensbane's, not the vessel's.
             Builder.Append("Krakensbane frame vel: ");
             Builder.Append(Krakensbane.GetFrameVelocity().ToString());
-            
+
             return Builder.ToString();
+        }
+
+        private static void Row(string label, object value)
+        {
+            Builder.Append(label).Append(": ").AppendLine(value.ToString());
         }
 
         private static void DrawRotatingFrameButtons()

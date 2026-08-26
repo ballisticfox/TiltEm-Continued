@@ -41,10 +41,7 @@ namespace TiltEm.Verification
             foreach (var lan in lans)
             foreach (var arg in args)
             {
-                all[i].Inclination = inc;
-                all[i].LongitudeOfAscendingNode = lan;
-                all[i].ArgumentOfPeriapsis = arg;
-                i++;
+                all[i++] = new TiltEmFrames.OrbitElements(inc, lan, arg);
             }
 
             return all;
@@ -217,10 +214,7 @@ namespace TiltEm.Verification
             foreach (var lan in new[] { 0.0, 47.5, 190.0, 312.25 })
             foreach (var arg in new[] { 0.0, 88.0, 201.75 })
             {
-                TiltEmFrames.OrbitElements local;
-                local.Inclination = 0.0;
-                local.LongitudeOfAscendingNode = lan;
-                local.ArgumentOfPeriapsis = arg;
+                var local = new TiltEmFrames.OrbitElements(0.0, lan, arg);
 
                 var frame = TiltEmFrames.OrbitalFrame(TiltEmFrames.ToCelestialElements(parent, local));
 
@@ -245,10 +239,7 @@ namespace TiltEm.Verification
             foreach (var inc in new[] { 0.0, 15.0, 63.4, 90.0, 116.6, 180.0 })
             foreach (var lan in new[] { 0.0, 190.0 })
             {
-                TiltEmFrames.OrbitElements local;
-                local.Inclination = inc;
-                local.LongitudeOfAscendingNode = lan;
-                local.ArgumentOfPeriapsis = 88.0;
+                var local = new TiltEmFrames.OrbitElements(inc, lan, 88.0);
 
                 var frame = TiltEmFrames.OrbitalFrame(TiltEmFrames.ToCelestialElements(parent, local));
 
@@ -290,10 +281,7 @@ namespace TiltEm.Verification
         {
             var mars = TiltEmFrames.FromPole(317.681070, 52.886356);
 
-            TiltEmFrames.OrbitElements local;
-            local.Inclination = 0.0;
-            local.LongitudeOfAscendingNode = 0.0;
-            local.ArgumentOfPeriapsis = 0.0;
+            var local = new TiltEmFrames.OrbitElements(0.0, 0.0, 0.0);
 
             var converted = TiltEmFrames.ToCelestialElements(mars, local);
 

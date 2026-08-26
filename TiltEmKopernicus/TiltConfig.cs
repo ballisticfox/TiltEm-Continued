@@ -85,19 +85,9 @@ namespace TiltEmKopernicus
 
             TryReadEffective(parent, depth + 1, out var parentTilt);
 
-            //Captured before composing: afterwards this is the celestial obliquity, which is a
-            //different number and the whole point of the flag.
-            var ownObliquity = tilt.Obliquity;
-
             //An untilted parent makes this exactly the identity, so the flag is safe to set on
             //every body in a pack rather than only the ones under a tilted parent.
             tilt = TiltEmFrames.ToCelestialTilt(parentTilt, tilt);
-
-            Debug.Log("[TiltEm]: " + body.bodyName + " tilt composed onto " + parent.bodyName + "'s: "
-                      + ownObliquity.ToString("F4") + " deg from " + parent.bodyName + "'s equator ("
-                      + parentTilt.Obliquity.ToString("F4") + " deg itself) becomes pole "
-                      + tilt.PoleRa.ToString("F4") + " / " + tilt.PoleDec.ToString("F4")
-                      + ", " + tilt.Obliquity.ToString("F4") + " deg in the celestial frame");
 
             return true;
         }

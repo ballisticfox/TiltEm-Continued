@@ -125,14 +125,22 @@ dotnet_style_explicit_tuple_names = true:suggestion
 
 ####################################################################################################################
 
+# Namespaces
+
+# Frames/, Camera/ and Debug/ group the root files by subsystem but stay in namespace TiltEm.
+# BodyTilt appears in the public AddTiltData signature, so moving it would break other mods.
+dotnet_style_namespace_match_folder = false:silent
+
+####################################################################################################################
+
 # Implicit and explicit types
 
-# Prefer var x = 5 over int x = 5;
-csharp_style_var_for_built_in_types = true:error
-# Prefer var obj = new Customer(); over Customer obj = new Customer();
-csharp_style_var_when_type_is_apparent = true:error
-# Prefer var f = this.Init(); over bool f = this.Init();
-csharp_style_var_elsewhere = true:error
+# Prefer int x = 5 over var x = 5;
+csharp_style_var_for_built_in_types = false:suggestion
+# Prefer var obj = new Customer(); the type is already on the line
+csharp_style_var_when_type_is_apparent = true:suggestion
+# Prefer bool f = Init() over var f = Init();
+csharp_style_var_elsewhere = false:suggestion
 
 ####################################################################################################################
 

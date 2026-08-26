@@ -2,6 +2,7 @@
 using System;
 using TiltEm;
 using UnityEngine;
+using OrbitElements = TiltEm.TiltEmFrames.OrbitElements;
 
 namespace TiltEmKopernicus
 {
@@ -9,29 +10,22 @@ namespace TiltEmKopernicus
     /// Rewrites the orbits of bodies whose config asked for elements relative to their parent's
     /// pole, converting them once into the celestial-frame elements KSP stores.
     ///
-    /// This runs on Kopernicus's OnPostLoad, which fires with the finished system prefab before
-    /// the real system is spawned. That is the only point that works. Doing it while the Orbit
-    /// node is parsed is too early - the parent's Properties node may not have been read yet, and
-    /// bodies are not parsed parent-first - and doing it after the system is live means rewriting
-    /// elements out from under an orbit that has already been Init'd.
-    ///
-    /// Working on the prefab means nothing downstream needs to know: Orbit.Init, the SOI and
-    /// hill-sphere maths, the map view and every position derived from the orbit all see ordinary
-    /// celestial-frame elements, exactly as if the config had been written that way by hand.
+    /// Runs against Kopernicus's finished system prefab, where every body has been parsed and no
+    /// orbit has been initialized yet.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.Instantly, true)]
     public class OrbitFrameLoader : MonoBehaviour
     {
         public void Awake()
         {
+            //Unlike the other loaders this one has to outlive its own Awake, since the work
+            //happens later on Kopernicus's callback.
             DontDestroyOnLoad(this);
         }
 
         /// <summary>
-        /// Start rather than Awake: Kopernicus's Events class is itself an Instantly addon, and
-        /// two addons in the same startup phase have no defined Awake order - so OnPostLoad is
-        /// only certain to exist once every Awake in that phase has run. Kopernicus fires it much
-        /// later, at PSystemSpawn, so there is no risk of missing it by waiting.
+        /// Start, not Awake: Kopernicus's Events is an Instantly addon too, so OnPostLoad is only
+        /// certain to exist once every Awake in that phase has run.
         /// </summary>
         public void Start()
         {
@@ -57,18 +51,17 @@ namespace TiltEmKopernicus
             }
             catch (Exception e)
             {
-                //A throw here would leave Kopernicus's load half-finished, which is a far worse
-                //outcome than some moons sitting in the wrong plane.
+                //Caught rather than thrown: a half-finished Kopernicus load is worse than some
+                //moons sitting in the wrong plane.
                 Debug.LogError("[TiltEm]: failed to rebase parent-relative orbits: " + e);
+                DisplayWarning();
             }
         }
 
         private static void RebaseChildren(PSystemBody parent)
         {
-            for (var i = 0; i < parent.children.Count; i++)
+            foreach (PSystemBody child in parent.children)
             {
-                var child = parent.children[i];
-
                 Rebase(parent, child);
                 RebaseChildren(child);
             }
@@ -78,39 +71,37 @@ namespace TiltEmKopernicus
         {
             if (child.celestialBody == null || !child.celestialBody.Get("relativeToParent", false)) return;
 
-            var orbit = child.orbitDriver == null ? null : child.orbitDriver.orbit;
+            Orbit orbit = child.orbitDriver?.orbit;
             if (orbit == null)
             {
                 Debug.LogWarning("[TiltEm]: " + child.name + " asked for relativeToParent but has no orbit.");
                 return;
             }
 
-            if (!TiltConfig.TryReadEffective(parent.celestialBody, out var parentTilt) || parentTilt.IsIdentity)
+            //An untilted parent makes the flag a no-op, so a pack can set it on every body.
+            if (!TiltConfig.TryReadEffective(parent.celestialBody, out BodyTilt parentTilt) || parentTilt.IsIdentity)
             {
-                //Not a warning: an untilted parent makes the flag a no-op by definition, which is
-                //what lets a pack set it on every body without special-casing.
-                Debug.Log("[TiltEm]: " + child.name + " is relativeToParent but " + parent.name
-                          + " has no tilt; elements left as written.");
                 return;
             }
 
-            TiltEmFrames.OrbitElements local;
-            local.Inclination = orbit.inclination;
-            local.LongitudeOfAscendingNode = orbit.LAN;
-            local.ArgumentOfPeriapsis = orbit.argumentOfPeriapsis;
+            OrbitElements local = ParentRelativeOrbit.Read(orbit);
 
-            var celestial = TiltEmFrames.ToCelestialElements(parentTilt, local);
+            ParentRelativeOrbit.Write(orbit, TiltEmFrames.ToCelestialElements(parentTilt, local));
+        }
 
-            orbit.inclination = celestial.Inclination;
-            orbit.LAN = celestial.LongitudeOfAscendingNode;
-            orbit.argumentOfPeriapsis = celestial.ArgumentOfPeriapsis;
-
-            Debug.Log("[TiltEm]: " + child.name + " rebased onto " + parent.name + "'s pole: inc "
-                      + local.Inclination.ToString("F4") + " -> " + celestial.Inclination.ToString("F4")
-                      + ", LAN " + local.LongitudeOfAscendingNode.ToString("F4") + " -> "
-                      + celestial.LongitudeOfAscendingNode.ToString("F4") + ", argPe "
-                      + local.ArgumentOfPeriapsis.ToString("F4") + " -> "
-                      + celestial.ArgumentOfPeriapsis.ToString("F4"));
+        /// <summary>
+        /// Warns that parent-relative orbit conversion failed and loading a save is unsafe.
+        /// </summary>
+        private static void DisplayWarning()
+        {
+            PopupDialog.SpawnPopupDialog(new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), "TiltEmFail", "Warning",
+                "Tilt'Em was not able to convert one or more parent-relative orbits due to an exception in the "
+                + "loading process.\n"
+                + "One or more bodies are left in the wrong orbital plane. Loading a saved game is not "
+                + "recommended, because the bodies could move once the issue is fixed.\n\n"
+                + "Please report this to the mod author, or the Tilt'Em team, including your KSP.log and your "
+                + "ModuleManager.ConfigCache file.\n\n",
+                "OK", true, UISkinManager.GetSkin("MainMenuSkin"));
         }
     }
 }
