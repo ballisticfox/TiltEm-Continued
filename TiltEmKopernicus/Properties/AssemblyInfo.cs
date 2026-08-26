@@ -10,12 +10,12 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("TiltEmKopernicus")]
-[assembly: AssemblyCopyright("Copyright ©  2019")]
-[assembly: AssemblyTrademark("Gabriel Vazquez")]
+[assembly: AssemblyCopyright("Copyright ©  2026")]
+[assembly: AssemblyTrademark("ballisticfox & Gabriel Vazquez")]
 [assembly: AssemblyCulture("")]
 
 [assembly: ComVisible(false)]
 [assembly: Guid("c748efb9-28cf-4abe-8784-3d105d3bafdf")]
 
-[assembly: AssemblyVersion("1.3.0")]
-[assembly: AssemblyFileVersion("1.3.0")]
+[assembly: AssemblyVersion("2.0.0")]
+[assembly: AssemblyFileVersion("2.0.0")]

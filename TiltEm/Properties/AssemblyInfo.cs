@@ -6,15 +6,15 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("TiltEm")]
-[assembly: AssemblyCopyright("Copyright ©  2019")]
-[assembly: AssemblyTrademark("Gabriel Vazquez")]
+[assembly: AssemblyCopyright("Copyright ©  2026")]
+[assembly: AssemblyTrademark("ballisticfox & Gabriel Vazquez")]
 [assembly: AssemblyCulture("")]
 
 [assembly: ComVisible(false)]
 [assembly: Guid("06a3e7cd-b0fb-4869-bdd9-26ab90d6396c")]
 
-[assembly: AssemblyVersion("1.4.0")]
-[assembly: AssemblyFileVersion("1.4.0")]
-[assembly: AssemblyInformationalVersion("1.4.0-compiled")]
+[assembly: AssemblyVersion("2.0.0")]
+[assembly: AssemblyFileVersion("2.0.0")]
+[assembly: AssemblyInformationalVersion("2.0.0-compiled")]
 
-[assembly: KSPAssembly("TiltEm", 1, 4, 0)]
+[assembly: KSPAssembly("TiltEm", 2, 0, 0)]
