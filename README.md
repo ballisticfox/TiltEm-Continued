@@ -8,9 +8,9 @@
 
 *This mod adds [planetary axial tilt](https://simple.wikipedia.org/wiki/Axial_tilt) for [Kerbal Space Program (KSP)](https://kerbalspaceprogram.com)*
 
-This is a complete and total rewrite of the original Tilt'Em mod! The previous version of tilt'em attempted to use mode switching between the rotating and non-rotating reference frames used by KSP, effectively swapping whether the body was tilted or the planetarium was tilted. However this implementation caused discontinuities at the transition point.
+This is a complete and total rewrite of the original Tilt'Em mod! The previous version of tilt'em attempted to use a mode switching approach between the rotating and non-rotating reference frames used by stock KSP, effectively swapping whether the body was tilted or the planetarium was tilted. However this implementation caused discontinuities at the transition point.
 
-This rewrite uses a fixed anchor point represented by the body frame at the of the rotating reference frame, allowing for continuous entry/exit of the inverseRotating frame.
+This rewrite uses a fixed anchor point represented by the body frame at the moment of entering the rotating reference frame, allowing for continuous entry/exit of the inverseRotating frame.
 
 If you would like to read more about the mathematics of Tilt'Em, you can read about a (somewhat rigorous) formalization [here](Docs/TILT_MATHEMATICS.pdf).
 
