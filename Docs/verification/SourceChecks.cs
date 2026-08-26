@@ -75,6 +75,19 @@ namespace TiltEm.Verification
                 @"RotationAngleAt\(anchorBody,");
             Absent("K1", "the caller's own rotation is not used to advance Zup", zupAtT,
                 @"RotationAngleAt\(body,");
+
+            //M4. An anchor is a frame paired with the angle it was captured at, and with none
+            //latched the two come from different places: ZupAnchor is whatever ResetZupAnchor
+            //left behind, ZupAnchorRotationAngle a plain zero. The unlatched case therefore has
+            //to derive both, not read the stored pair.
+            Present("M4", "an unlatched anchor is derived rather than read", zupAtT,
+                @"if \(latched == null\)");
+            Present("M4", "and derived the way CBUpdate derives it", zupAtT,
+                @"anchor = TiltEmFrames\.AnchorFor\(tilt, body\.rotationAngle, body\.BodyFrame");
+            Present("M4", "paired with the angle that anchor was taken at", zupAtT,
+                @"anchorRotationAngle = body\.rotationAngle");
+            Absent("M4", "the stored pair is not used directly", zupAtT,
+                @"TiltEmFrames\.Zup\(TiltEm\.ZupAnchor,");
         }
 
         /// <summary>
@@ -224,6 +237,24 @@ namespace TiltEm.Verification
             Present("G5", "and still uses the body pole in the other mode", mapCam,
                 @"TiltEm\.CelestialNorth\s*\(");
 
+            //G7. The correction has to be substituted where stock computes endRot, not applied
+            //after LateUpdate has finished. A postfix samples the pitch axis after
+            //transform.localRotation has been refreshed, where stock samples it before, and it
+            //moves the camera at the end of the method - which KSPCommunityFixes'
+            //OptimisedVectorLines cannot see, its projection matrix being cached once per frame
+            //on the first orbit-line projection. Orbit lines then lag the bodies whenever the
+            //camera moves.
+            Present("G7", "the map camera correction is transpiled in", mapCam,
+                @"\[HarmonyTranspiler\]");
+            Present("G7", "it substitutes stock's own AngleAxis call", mapCam,
+                @"nameof\(Quaternion\.AngleAxis\)");
+            Present("G7", "and rebuilds the heading from camHdg rather than the passed angle", mapCam,
+                @"camera\.camHdg\s*\*\s*Mathf\.Rad2Deg");
+            Absent("G7", "the pivot is not written after LateUpdate returns", mapCam,
+                @"\[HarmonyPostfix\]");
+            Absent("G7", "and the pivot is not written by this patch at all", mapCam,
+                @"pivot\.rotation\s*=");
+
             // G6. The ease itself is verified numerically; these pin the two decisions in it that
             // a numeric check cannot see.
             Present("G6", "the up axis is eased, not taken raw", mapCam, @"TiltEm\.SmoothMapNorth\s*\(");
@@ -237,6 +268,35 @@ namespace TiltEm.Verification
             Present("G5", "TiltConfig reads the orbital plane pole form first", reader,
                 @"Has\(""orbitalPlaneRA""\)");
             Present("G5", "and falls back to the legacy pair", reader, @"Has\(""orbitalPlaneX""\)");
+
+            //G8. The stock system needs an explicit plane, because the fallback - the star's own
+            //tilt - is 7.57 degrees away from the plane its planets actually orbit in. Both the
+            //no-Kopernicus defaults and the shipped example config have to carry it, since a
+            //player may be running either.
+            Present("G8", "the no-Kopernicus defaults seed a system plane", tiltEmSrc,
+                @"BuildDefaultOrbitalPlanes\(\)");
+            Present("G8", "and seed it for the stock star as the celestial pole", tiltEmSrc,
+                @"\[""Sun""\]\s*=\s*TiltEmFrames\.Untilted");
+
+            var cfg = Read(Path.Combine("Resources", "TiltEm.cfg"));
+            Present("G8", "the shipped config sets the stock system plane", cfg,
+                @"orbitalPlaneRA\s*=\s*0[\s\S]{0,80}?orbitalPlaneDec\s*=\s*90");
+            Present("G8", "and sets it on the star, not a planet", cfg,
+                @"@Body\[Sun\][\s\S]{0,600}?orbitalPlaneDec");
+
+            //G7. The projection cache KSPCommunityFixes keeps for Vectrosity is filled lazily by
+            //whichever LateUpdate draws a line first, and every Vectrosity consumer in KSP draws
+            //from its own. Dropping it once each camera has settled is what makes the lazy fill
+            //land after the pose is final. Soft dependency: resolved by name, no-op when absent.
+            var cache = StripComments(Read(Path.Combine("TiltEm", "Harmony", "VectorLineProjectionCache.cs")));
+            Present("G7", "the projection cache is dropped after the map camera moves", cache,
+                @"HarmonyPatch\(typeof\(PlanetariumCamera\)\)[\s\S]{0,400}?VectorLineProjectionCache\.Invalidate");
+            Present("G7", "and after the scaled camera moves", cache,
+                @"HarmonyPatch\(typeof\(ScaledCamera\)\)[\s\S]{0,400}?VectorLineProjectionCache\.Invalidate");
+            Present("G7", "KSPCF is resolved by name, not referenced", cache,
+                @"AccessTools\.TypeByName\(CacheType\)");
+            Present("G7", "and a missing cache is a no-op", cache,
+                @"if \(_lastCachedFrame == null\) return;");
 
             var flightCamera = Read(Path.Combine("TiltEm", "Harmony", "FlightGlobals_GetFoR.cs"));
             Present("G3", "the orbital camera asks for the world pole", flightCamera, @"TiltEm\.WorldNorth\s*\(");

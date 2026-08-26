@@ -159,6 +159,75 @@ namespace TiltEm.Verification
             if (rotating) EnsureZupAnchor(body);
         }
 
+        /// <summary>
+        /// Mirrors TiltEm.ResetZupAnchor, which runs from the onGameSceneSwitchRequested
+        /// handler. Every load goes through it: quickload, loading a save from the main menu,
+        /// and every ordinary scene change.
+        ///
+        /// Note what the reset leaves behind. The anchor body is cleared, so CBUpdate re-latches
+        /// on its next rotating tick, but ZupAnchorRotationAngle is set to zero rather than to
+        /// anything meaningful. Any reader that consults the anchor before that re-latch
+        /// therefore measures elapsed rotation from zero, which is the body's whole
+        /// rotationAngle rather than nothing at all.
+        /// </summary>
+        public void ResetZupAnchor()
+        {
+            _zupAnchorBody = null;
+            ZupAnchorRotationAngle = 0;
+            ZupAnchor = TiltEmFrames.OrIdentity(Zup);
+        }
+
+        /// <summary>
+        /// Mirrors PSystemSetup.SetSpaceCentre, which flips the home body into the rotating
+        /// frame by writing the flag directly. It does not route through setRotatingFrame, so
+        /// the mod's prefix never fires and no anchor is latched; the next CBUpdate is what
+        /// eventually latches one.
+        /// </summary>
+        public void SetSpaceCentre(SimBody home)
+        {
+            home.InverseRotation = true;
+        }
+
+        /// <summary>
+        /// Mirrors the Planetarium_ZupAtT prefix. Orbit.GetOrbitalStateVectorsAtTrueAnomaly
+        /// reaches this, so it decides where every on-rails vessel is placed.
+        /// </summary>
+        public Planetarium.CelestialFrame ZupAtT(SimBody body, double ut)
+        {
+            if (body == null || !body.InverseRotation) return Zup;
+
+            var anchorBody = body;
+            if (_zupAnchorBody != null)
+            {
+                foreach (var known in _known)
+                {
+                    if (known.Name != _zupAnchorBody) continue;
+                    anchorBody = known;
+                    break;
+                }
+            }
+
+            var anchor = ZupAnchor;
+            var anchorRotationAngle = ZupAnchorRotationAngle;
+
+            if (_zupAnchorBody == null && !UnlatchedZupAtTUsesTheResetOrigin)
+            {
+                anchor = TiltEmFrames.AnchorFor(anchorBody.Tilt, body.RotationAngle, body.BodyFrame, Zup);
+                anchorRotationAngle = body.RotationAngle;
+            }
+
+            var rotationAngle =
+                (anchorBody.InitialRotation + 360.0 * (1.0 / anchorBody.RotationPeriod) * ut) % 360.0;
+
+            return TiltEmFrames.Zup(anchor, anchorBody.Tilt, rotationAngle - anchorRotationAngle);
+        }
+
+        /// <summary>
+        /// When set, ZupAtT reads ZupAnchorRotationAngle even with no anchor latched, as it did
+        /// before that case was handled. Used to prove the handling is load-bearing.
+        /// </summary>
+        public bool UnlatchedZupAtTUsesTheResetOrigin;
+
         /// <summary>The body currently holding the anchor, or null. Mirrors TiltEm.ZupAnchorBody.</summary>
         public string AnchorBody
         {

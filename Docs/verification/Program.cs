@@ -32,6 +32,7 @@ namespace TiltEm.Verification
             Console.WriteLine("KSP managed assemblies: " + managed);
 
             if (Array.IndexOf(args, "--examples") >= 0) return RunExamples();
+            if (Array.IndexOf(args, "--bench") >= 0) return RunBenchmarks();
 
             return RunAll();
         }
@@ -44,6 +45,13 @@ namespace TiltEm.Verification
         private static int RunExamples()
         {
             WorkedExamples.Run();
+            return 0;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int RunBenchmarks()
+        {
+            Benchmarks.Run();
             return 0;
         }
 
@@ -76,6 +84,9 @@ namespace TiltEm.Verification
 
             Harness.Section("Sphere-of-influence handovers (L1-L3)");
             DominantBodyChecks.Run();
+
+            Harness.Section("Save/load round trips (M1-M5)");
+            PersistenceChecks.Run();
 
             var root = SourceChecks.FindRepoRoot();
             Harness.Section("Shipped sources (C1-C4, D1-D3) - " + root);

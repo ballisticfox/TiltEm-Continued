@@ -49,12 +49,30 @@ namespace TiltEm
         private static readonly Dictionary<string, BodyTilt> TiltDictionary = BuildDefaultTilts();
 
         /// <summary>
-        /// Per-star orbital plane normals, as poles. Empty by default: a star with no plane
-        /// configured falls back to its own tilt, which is the closest thing to a system plane
-        /// that is already known.
+        /// Per-star orbital plane normals, as poles, used by the map camera's "system up" mode.
+        ///
+        /// A star with no entry here and none in config falls back to its own tilt, which is the
+        /// closest thing to a system plane that is already known. That fallback is wrong for the
+        /// stock system, which is why Kerbol is seeded below.
         /// </summary>
-        private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary =
-            new Dictionary<string, BodyTilt>();
+        private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary = BuildDefaultOrbitalPlanes();
+
+        private static Dictionary<string, BodyTilt> BuildDefaultOrbitalPlanes()
+        {
+            return new Dictionary<string, BodyTilt>
+            {
+                //Stock Kerbol. Every planet orbits within about two degrees of the celestial
+                //equator and Kerbin's inclination is exactly zero there, so the system plane IS
+                //the celestial equator and its normal is the celestial pole.
+                //
+                //Kerbol's own axis is not that plane's normal - DefaultLegacyTilts leans it 7.57
+                //degrees - so without this entry the fallback would tip the whole map by that
+                //much in system-up mode and draw Kerbin visibly inclined when its inclination is
+                //zero. The two coincide only for a star whose equator happens to be its system's
+                //plane, which is true of no real system and not of this one.
+                ["Sun"] = TiltEmFrames.Untilted,
+            };
+        }
 
         private static Dictionary<string, BodyTilt> BuildDefaultTilts()
         {

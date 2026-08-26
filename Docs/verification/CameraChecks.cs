@@ -170,6 +170,23 @@ namespace TiltEm.Verification
             // so "unset" and "upright" are the same thing and need no special case.
             Harness.CheckWithin("G5", "an unset plane is exactly the celestial pole",
                 Harness.MaxComponentError(TiltEmFrames.Untilted.Tilt.Z, new Vector3d(0, 0, 1)), 1e-15, "abs");
+
+            // G8. The stock system is the case where that fallback is wrong. Kerbol's own axis
+            // leans 7.57 degrees, while the stock planets orbit the celestial equator - Kerbin's
+            // inclination is exactly zero there - so falling back to the star's tilt would level
+            // the map on a plane the system does not use and draw Kerbin inclined. Hence the
+            // seeded default, which has to be the celestial pole and has to not be a no-op.
+            var kerbol = TiltEmFrames.FromLegacyEuler(new Vector3d(7.57, 0, 2.12));
+
+            Harness.CheckWithin("G8", "the stock system plane is the celestial pole",
+                Harness.MaxComponentError(TiltEmFrames.Untilted.Tilt.Z, new Vector3d(0, 0, 1)), 1e-15, "abs");
+            //7.86, not the 7.57 written in the config: tiltx and tiltz compose, so the pole ends
+            //up further from +Z than either term. Same arithmetic that makes Kerbin's
+            //Euler(20, 0, 5) an obliquity of 20.59.
+            Harness.CheckWithin("G8", "and Kerbol's own axis is 7.86 degrees off it",
+                Math.Abs(kerbol.Obliquity - 7.859587), 1e-6, "deg");
+            Harness.Check("G8", "so seeding the plane is not a no-op",
+                kerbol.Obliquity > 1.0, Harness.Fmt(kerbol.Obliquity) + " deg of map tilt avoided");
         }
 
         /// <summary>

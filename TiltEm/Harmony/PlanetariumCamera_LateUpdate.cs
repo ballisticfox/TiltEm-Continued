@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
-using System;
-using KSP.UI.Screens;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
 using UnityEngine;
 
 // ReSharper disable All
@@ -12,7 +13,7 @@ namespace TiltEm.Harmony
     ///
     /// Stock orients the camera pivot with
     ///
-    ///     Quaternion.AngleAxis(camHdg * Rad2Deg + (float)Planetarium.InverseRotAngle, Vector3.up)
+    ///     endRot = Quaternion.AngleAxis(camHdg * Rad2Deg + (float)Planetarium.InverseRotAngle, Vector3.up)
     ///
     /// The InverseRotAngle term is there to cancel the rotating frame: while a body holds it,
     /// Zup turns the whole sky, and without that term the camera would be dragged around with
@@ -32,71 +33,137 @@ namespace TiltEm.Harmony
     /// Second change: the camera's up is the focused body's north pole rather than the
     /// celestial +Z axis, so looking at a tilted planet shows it upright rather than leaning.
     /// FromToRotation is the identity for an untilted body, so stock framing is untouched there.
+    ///
+    /// Why a transpiler rather than a postfix. Both of stock's assignments to endRot are
+    /// followed by more work in the same method: the pitch rotate samples `transform.right`,
+    /// then `transform.localPosition` is lerped toward the target distance,
+    /// `transform.localRotation` is rebuilt from it, and finally `pivot.localPosition` is
+    /// smooth-damped. A postfix runs after all of that, which cost two things.
+    ///
+    /// It sampled the pitch axis at the wrong moment. Stock reads `transform.right` *before*
+    /// refreshing `transform.localRotation`; a postfix necessarily reads it after, so while the
+    /// zoom lerp was in flight the two disagreed and the pitch axis was slightly off.
+    ///
+    /// And it moved the camera after the host method had finished. The camera transform is a
+    /// child of the pivot, so writing the pivot late moves the camera's world pose at the very
+    /// end of LateUpdate - after anything earlier in the frame has already read it. That is
+    /// invisible on its own, because Unity evaluates a camera's matrices live. It stops being
+    /// invisible next to KSPCommunityFixes' OptimisedVectorLines, which replaces Vectrosity's
+    /// Camera.WorldToScreenPoint with a projection matrix cached once per frame, captured
+    /// lazily on the first orbit-line projection. If that capture happens before this write,
+    /// every orbit line that frame is projected from the pre-correction pose while the planet
+    /// meshes render from the post-correction one, and the lines wobble against the bodies
+    /// whenever the camera moves.
+    ///
+    /// Substituting the value where stock computes it removes both problems structurally: the
+    /// pivot reaches its final value at exactly the point stock intended, and the four lines
+    /// that depend on it run afterwards as written. It also removes the need to guess which of
+    /// stock's two branches ran, which the postfix had to reconstruct from the input locks.
     /// </summary>
     [HarmonyPatch(typeof(PlanetariumCamera))]
     [HarmonyPatch("LateUpdate")]
     internal class PlanetariumCamera_LateUpdate
     {
-        private static readonly AccessTools.FieldRef<PlanetariumCamera, bool> ExternalControl =
-            AccessTools.FieldRefAccess<PlanetariumCamera, bool>("externalControl");
-
         /// <summary>
-        /// AlarmClockApp.AppFrameHasLock is internal, so it is bound once as a delegate rather
-        /// than reflected on every frame. Degrades to "no lock" if it ever disappears, which
-        /// only costs the correction on the frames the alarm clock holds focus.
+        /// Stock assigns endRot twice - once in the ordinary camera-controls branch, once in the
+        /// branch that runs while the input is fully locked or the alarm clock has focus - and
+        /// calls Quaternion.AngleAxis nowhere else in the method.
         /// </summary>
-        private static readonly Func<bool> AlarmClockHasLock = BindAlarmClockLock();
+        private const int ExpectedSites = 2;
 
-        private static Func<bool> BindAlarmClockLock()
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> TranspileLateUpdate(IEnumerable<CodeInstruction> instructions)
         {
-            var method = AccessTools.Method(typeof(AlarmClockApp), "AppFrameHasLock");
+            var stock = AccessTools.Method(typeof(Quaternion), nameof(Quaternion.AngleAxis),
+                new[] { typeof(float), typeof(Vector3) });
+            var tilted = AccessTools.Method(typeof(PlanetariumCamera_LateUpdate), nameof(PivotRotation),
+                new[] { typeof(float), typeof(Vector3), typeof(PlanetariumCamera) });
 
-            if (method == null)
+            var code = new List<CodeInstruction>(instructions);
+            var replaced = 0;
+
+            if (stock == null || tilted == null)
             {
-                Debug.LogWarning("[TiltEm]: AlarmClockApp.AppFrameHasLock not found; map camera "
-                                 + "correction will skip alarm-clock-focused frames.");
-                return () => false;
+                Debug.LogError("[TiltEm]: could not resolve the map camera transpiler targets; "
+                               + "the map camera will use stock's untilted framing.");
+                return code;
             }
 
-            return (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), method);
+            for (var i = 0; i < code.Count; i++)
+            {
+                if (!code[i].Calls(stock)) continue;
+
+                //The replacement takes the camera as a third argument, so push it after the two
+                //stock arguments are already on the stack.
+                var call = code[i];
+                var loadCamera = new CodeInstruction(OpCodes.Ldarg_0);
+
+                //A call in the middle of an expression cannot be a branch target, but blocks and
+                //labels are cheap to carry across and expensive to lose.
+                loadCamera.labels.AddRange(call.labels);
+                call.labels.Clear();
+                loadCamera.blocks.AddRange(call.blocks);
+                call.blocks.Clear();
+
+                call.opcode = OpCodes.Call;
+                call.operand = tilted;
+
+                code.Insert(i, loadCamera);
+                i++;
+                replaced++;
+            }
+
+            if (replaced != ExpectedSites)
+            {
+                Debug.LogWarning("[TiltEm]: patched " + replaced + " of " + ExpectedSites
+                                 + " map camera orientation sites. The map camera may show tilted "
+                                 + "bodies leaning, or drift while a vessel is below a rotating-frame "
+                                 + "threshold.");
+            }
+
+            return code;
         }
 
-        [HarmonyPostfix]
-        private static void PostfixLateUpdate(PlanetariumCamera __instance)
+        /// <summary>
+        /// Stands in for stock's Quaternion.AngleAxis at both endRot sites.
+        ///
+        /// The angle handed in is <c>camHdg * Rad2Deg + InverseRotAngle</c>. The heading half is
+        /// still wanted and is taken from the camera directly; the InverseRotAngle half is
+        /// discarded, because Planetarium.Rotation supersedes it. Reading camHdg rather than
+        /// subtracting InverseRotAngle back off avoids depending on stock's two terms staying in
+        /// that order.
+        /// </summary>
+        private static Quaternion PivotRotation(float stockAngle, Vector3 stockAxis, PlanetariumCamera camera)
         {
-            if (__instance.target == null || FlightDriver.Pause) return;
-            if (!StockWouldHaveSetOrientation(__instance)) return;
-
-            var pivot = __instance.GetPivot();
-            if (pivot == null) return;
+            if (camera == null || camera.target == null) return Quaternion.AngleAxis(stockAngle, stockAxis);
 
             //Eased rather than taken raw, so switching rotation mode with V - or focusing a body
             //with a different pole - swings over a few frames instead of cutting. Driven from the
             //target every frame rather than kicked off by the toggle, so both causes of a change
             //are handled by the same path and neither can be missed.
-            var north = TiltEm.SmoothMapNorth(GetNorth(__instance.target));
+            //
+            //Memoised per frame because stock's two branches are not quite exclusive: the alarm
+            //clock can hold focus while the camera controls are unlocked, and easing twice in one
+            //frame would make the swing frame-rate dependent.
+            var north = SmoothedNorth(camera);
 
             //Exactly what stock builds, with the two substitutions described above.
-            var endRot = (Quaternion)Planetarium.Rotation
-                         * Quaternion.FromToRotation(Vector3.up, north)
-                         * Quaternion.AngleAxis(__instance.camHdg * Mathf.Rad2Deg, Vector3.up);
-
-            pivot.rotation = endRot;
-            pivot.Rotate(__instance.GetCameraTransform().right, __instance.camPitch * Mathf.Rad2Deg, Space.World);
+            return (Quaternion)Planetarium.Rotation
+                   * Quaternion.FromToRotation(Vector3.up, north)
+                   * Quaternion.AngleAxis(camera.camHdg * Mathf.Rad2Deg, stockAxis);
         }
 
-        /// <summary>
-        /// Mirrors the two branches in LateUpdate that assign the pivot rotation. If neither ran
-        /// - something else is driving the camera - the pivot is left alone.
-        /// </summary>
-        private static bool StockWouldHaveSetOrientation(PlanetariumCamera camera)
-        {
-            if (InputLockManager.IsAllLocked(ControlTypes.All) || AlarmClockHasLock())
-            {
-                return true;
-            }
+        private static int _northFrame = -1;
+        private static Vector3 _north;
 
-            return InputLockManager.IsUnlocked(ControlTypes.CAMERACONTROLS) && !ExternalControl(camera);
+        private static Vector3 SmoothedNorth(PlanetariumCamera camera)
+        {
+            if (_northFrame == Time.frameCount) return _north;
+
+            _north = TiltEm.SmoothMapNorth(GetNorth(camera.target));
+            _northFrame = Time.frameCount;
+
+            return _north;
         }
 
         /// <summary>
