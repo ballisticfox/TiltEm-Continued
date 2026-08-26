@@ -68,4 +68,4 @@ I would also like to thank my discord community and the planet modding community
 
 I'd also like to thank my patreon who support everything I do, if you'd like to support me, you can do so [here](https://www.patreon.com//ballisticfox).
 
-*AI Disclosure: Claude Opus 5 & Claude Opus 4.6 were used in the idealization, mathematical grounding and implementation of this mod. If you have code comment or concerns, please make an appropriate GitHub issue or Pull Request.*
+*AI Disclosure: Claude Opus 5 & Claude Opus 4.6 were used in the idealization, mathematical grounding and implementation of this mod. If you have any code comments or concerns, please make an appropriate GitHub Issue or Pull Request.*
