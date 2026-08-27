@@ -306,8 +306,7 @@ namespace TiltEm
             //exactly on the parent's pole, which is the case the feature exists for.
             Vector3d pole = parent.Tilt.LocalToWorld(local.Tilt.Z);
 
-            double dec = Math.Asin(Clamp(pole.z, -1.0, 1.0)) * Rad2Deg;
-            double ra = Math.Atan2(pole.y, pole.x) * Rad2Deg;
+            ReadPole(pole, out double ra, out double dec);
 
             return FromPole(ra, dec, local.PrimeMeridian);
         }
@@ -315,6 +314,55 @@ namespace TiltEm
         #endregion
 
         #region Construction
+
+        /// <summary>
+        /// Brings a right ascension onto [0, 360) and stops a declination at the pole. The right
+        /// ascension is carried through untouched, including at the pole itself.
+        /// </summary>
+        //Clamped, not tipped over the top. Carrying on past 90 keeps the POLE continuous - the
+        //declination comes back down the far side with the right ascension turned through 180 -
+        //which is why it looks like the right thing to do. It does not keep the BODY continuous:
+        //the same 180 lands on the frame's other two axes, so the planet snaps half a turn about
+        //its own axis as the handle crosses. Stopping at the pole is the lesser of the two.
+        //
+        //The right ascension survives the clamp even though a pole at 90 has none of its own,
+        //so a handle dragged onto the pole comes back off along the meridian it arrived on.
+        public static void NormalizePole(double poleRa, double poleDec, out double ra, out double dec)
+        {
+            ra = NormalizeDegrees(poleRa);
+            dec = Clamp(poleDec, -90.0, 90.0);
+        }
+
+        /// <summary>
+        /// Inverse of <see cref="ToCelestialTilt"/>: a celestial-frame tilt re-expressed against
+        /// the parent's equator.
+        /// </summary>
+        public static BodyTilt ToLocalTilt(BodyTilt parent, BodyTilt celestial)
+        {
+            if (parent.IsIdentity) return celestial;
+
+            Vector3d pole = parent.TiltTranspose.LocalToWorld(celestial.Tilt.Z);
+
+            ReadPole(pole, out double ra, out double dec);
+
+            return FromPole(ra, dec, celestial.PrimeMeridian);
+        }
+
+        /// <summary>
+        /// A pole that stays continuous as its declination reaches 90, where a right ascension
+        /// stops being a direction and becomes a spin.
+        /// </summary>
+        //T is PlanetaryFrame(ra, dec, 0), which at dec 90 is Rz(ra) rather than the identity.
+        //FromPole pins the right ascension away there, and that is right for a config - it keeps
+        //an untilted body's frame exactly the identity - but it is a step change of ra degrees in
+        //the body's orientation. A handle dragged onto the pole would snap the planet round by
+        //it, and one held against the clamp would flip it back and forth every frame the
+        //declination crossed. Folding the same angle into the prime meridian holds the body
+        //still: PlanetaryFrame(0, 90, rot + ra) is exactly PlanetaryFrame(ra, 90, rot).
+        public static BodyTilt FromPoleContinuous(double poleRa, double poleDec)
+        {
+            return FromPole(poleRa, poleDec, poleDec >= 90.0 ? NormalizeDegrees(poleRa) : 0.0);
+        }
 
         /// <summary>Builds a tilt from an IAU-style pole direction.</summary>
         public static BodyTilt FromPole(double poleRa, double poleDec)
@@ -355,9 +403,7 @@ namespace TiltEm
             Planetarium.CelestialFrame legacy;
             UnityEuler(euler.x, euler.y, euler.z).swizzle.FrameVectors(out legacy.X, out legacy.Y, out legacy.Z);
 
-            Vector3d pole = legacy.Z;
-            double dec = Math.Asin(Clamp(pole.z, -1.0, 1.0)) * Rad2Deg;
-            double ra = Math.Atan2(pole.y, pole.x) * Rad2Deg;
+            ReadPole(legacy.Z, out double ra, out double dec);
 
             BodyTilt tilt = FromPole(ra, dec);
 
@@ -367,6 +413,58 @@ namespace TiltEm
             tilt.PrimeMeridian = Math.Atan2(spin.X.y, spin.X.x) * Rad2Deg;
 
             return tilt;
+        }
+
+        /// <summary>
+        /// The spin to add to <paramref name="replacement"/>'s rotation angle so that it puts the
+        /// body exactly where <paramref name="original"/> does. Degrees.
+        /// </summary>
+        //Two tilts that share a pole describe the same body up to a turn about that pole, and
+        //this is that turn. Rewriting a tilt in another form - a pole as a legacy pair, a legacy
+        //pair with its prime meridian folded away - is only lossless if the difference comes off
+        //the rotation angle, and reading it off the frames covers the degenerate poles, where the
+        //two forms need not even agree on a right ascension.
+        public static double SpinOffset(BodyTilt original, BodyTilt replacement)
+        {
+            Planetarium.CelestialFrame from = default;
+            Planetarium.CelestialFrame to = default;
+
+            LocalBodyFrame(original, 0.0, ref from);
+            LocalBodyFrame(replacement, 0.0, ref to);
+
+            //transpose(to) * from fixes the shared pole, so it is a spin about +Z and its X
+            //column carries the whole angle.
+            Planetarium.CelestialFrame residual = Multiply(Transpose(to), from);
+
+            return NormalizeDegrees(Math.Atan2(residual.X.y, residual.X.x) * Rad2Deg);
+        }
+
+        /// <summary>
+        /// Inverse of <see cref="FromLegacyEuler"/>: the tiltx/tiltz pair whose legacy operator
+        /// puts the pole where <paramref name="tilt"/> has it. Y is always zero, the only value
+        /// the config format ever carried.
+        /// </summary>
+        //Only the pole comes back. The legacy pair has two degrees of freedom, so the spin it
+        //implies about that pole is whatever falls out - which is why FromLegacyEuler returns a
+        //prime meridian and this cannot take one. A pole round-trips exactly; a whole BodyTilt
+        //does not.
+        public static Vector3d ToLegacyEuler(BodyTilt tilt)
+        {
+            //The legacy operator is Rx(x) * Rz(z) acting in Unity space, so it sends Unity's up
+            //axis - the celestial pole - to (-sin z, cos z cos x, cos z sin x). Reading that off
+            //in celestial components, where y and z are swapped, gives both angles directly.
+            Vector3d pole = tilt.Tilt.Z;
+
+            //z is taken on the branch where cos z is non-negative; the other branch describes the
+            //same pole with x turned through 180 degrees. atan2 against the length of what is
+            //left, for the reason ReadPole gives.
+            double z = Math.Atan2(-pole.x, Math.Sqrt(pole.y * pole.y + pole.z * pole.z)) * Rad2Deg;
+
+            //Degenerate when the pole lies on the celestial X axis, where every x gives the same
+            //pole. atan2 returns zero there, which is as good an answer as any.
+            double x = Math.Atan2(pole.y, pole.z) * Rad2Deg;
+
+            return new Vector3d(x, 0.0, z);
         }
 
         /// <summary>Unity's Euler convention (Z, X, Y) in double precision.</summary>
@@ -381,6 +479,16 @@ namespace TiltEm
         #endregion
 
         #region Helpers
+
+        /// <summary>Reads a unit direction back as a right ascension and declination, degrees.</summary>
+        //atan2 against the equatorial length, never asin of the polar component: asin loses half
+        //its digits as its argument approaches 1, which is exactly where a pole spends its time.
+        //The same reasoning as the inclination in DecomposeOrbitalFrame; see section 9.1.
+        private static void ReadPole(Vector3d pole, out double ra, out double dec)
+        {
+            dec = Math.Atan2(pole.z, Math.Sqrt(pole.x * pole.x + pole.y * pole.y)) * Rad2Deg;
+            ra = Math.Atan2(pole.y, pole.x) * Rad2Deg;
+        }
 
         private static double Clamp(double value, double min, double max)
         {

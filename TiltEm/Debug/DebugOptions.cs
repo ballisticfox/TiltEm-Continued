@@ -10,5 +10,8 @@
     {
         /// <summary>Whether the focused body's axes are drawn wherever a map camera is up.</summary>
         public static bool DrawAxes { get; set; }
+
+        /// <summary>Whether an arrow is drawn along the focused body's own orbital plane normal.</summary>
+        public static bool DrawPlaneNormal { get; set; }
     }
 }

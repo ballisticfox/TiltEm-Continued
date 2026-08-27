@@ -32,6 +32,18 @@ namespace TiltEm
         }
 
         /// <summary>
+        /// A celestial-frame direction in world space, Unity-swizzled. The same conversion the
+        /// body frame carries, so a pole put through this comes out where
+        /// <see cref="WorldNorth"/> has it.
+        /// </summary>
+        //Directions only. A rotation AXIS picks up a sign here as well, because swapping two
+        //axes flips handedness and with it the sense of every turn; the drag rings undo that.
+        public static Vector3 ToWorld(Vector3d celestial)
+        {
+            return TiltEmFrames.OrIdentity(Planetarium.Zup).WorldToLocal(celestial).xzy;
+        }
+
+        /// <summary>
         /// The normal of the system's orbital plane, in the celestial frame, Unity-swizzled.
         /// Falls back to the star's own pole when no orbital plane is configured.
         /// </summary>

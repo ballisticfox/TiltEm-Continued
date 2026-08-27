@@ -37,6 +37,40 @@ namespace TiltEm.Verification
         }
     }
 
+    /// <summary>The body editor's conversions and its exported configs.</summary>
+    public class EditorCheckTests
+    {
+        private const string Group = "EditorChecks";
+
+        private static void Body() => EditorChecks.Run();
+
+        public static IEnumerable<object[]> Cases => CheckRunner.Cases(Group, Body);
+
+        [Theory]
+        [MemberData(nameof(Cases))]
+        public void Check(int index, string defect, string name)
+        {
+            CheckRunner.Verify(Group, Body, index, defect, name);
+        }
+    }
+
+    /// <summary>What the editor does to the sky while it moves a body.</summary>
+    public class EditorFrameCheckTests
+    {
+        private const string Group = "EditorFrameChecks";
+
+        private static void Body() => EditorFrameChecks.Run();
+
+        public static IEnumerable<object[]> Cases => CheckRunner.Cases(Group, Body);
+
+        [Theory]
+        [MemberData(nameof(Cases))]
+        public void Check(int index, string defect, string name)
+        {
+            CheckRunner.Verify(Group, Body, index, defect, name);
+        }
+    }
+
     /// <summary>Whole system, many tilted bodies at once.</summary>
     public class SystemCheckTests
     {

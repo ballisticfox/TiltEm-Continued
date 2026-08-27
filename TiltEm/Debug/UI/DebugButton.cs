@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,6 +12,9 @@ namespace TiltEm
     {
         public Button button;
 
+        /// <summary>The button's own caption, so a button can say what it will do next.</summary>
+        public TextMeshProUGUI label;
+
         // ReSharper disable once UnusedMember.Local
         private void Awake()
         {
@@ -19,6 +23,11 @@ namespace TiltEm
         }
 
         protected virtual void SetupValues() { }
+
+        protected void SetLabel(string text)
+        {
+            if (label != null) label.text = text;
+        }
 
         protected abstract void OnClick();
     }

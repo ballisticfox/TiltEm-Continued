@@ -51,6 +51,9 @@ namespace TiltEm.Verification
                 new[] { "TiltEm.cs", @"HarmonyInstance\.PatchAll" },
                 new[] { "Loader" + Path.DirectorySeparatorChar + "TiltLoader.cs", @"AddTiltData" },
                 new[] { "Loader" + Path.DirectorySeparatorChar + "OrbitFrameLoader.cs", @"Events\.OnPostLoad\.Add" },
+                // The editor writes poles and orbits straight into the running game, which is the
+                // last thing anyone wants happening under a mod that owns the same frames.
+                new[] { "Editor" + Path.DirectorySeparatorChar + "BodyEditor.cs", @"Begin\(CelestialBody" },
             };
 
             foreach (var entry in gated)

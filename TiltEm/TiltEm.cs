@@ -119,8 +119,10 @@ namespace TiltEm
         // ReSharper disable once MemberCanBeMadeStatic.Local
         private void SceneRequested(GameEvents.FromToAction<GameScenes, GameScenes> data)
         {
-            //Unconditional: the camera reframes on every scene load, so the eased up axis has
-            //to start from the new scene's value rather than swing to it.
+            //Both unconditional: the camera reframes on every scene load, so the eased up axis
+            //has to start from the new scene's value rather than swing to it, and an editor
+            //session that survived the change would hold the camera in a scene it cannot see.
+            BodyEditor.SceneChanged();
             MapCamera.ResetMapNorth();
 
             //Only the destination matters; gating on the source too would skip the main-menu to

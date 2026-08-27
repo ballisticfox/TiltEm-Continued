@@ -29,6 +29,14 @@ namespace TiltEm
             RectTransform vessel = DebugUi.CreateScreen<VesselScreen>("TiltEm_Vessel");
             vessel.GetComponent<VesselScreen>().BuildUi();
             Add(Root, "TiltEm_Vessel", "Vessel", vessel);
+
+            RectTransform tiltEditor = DebugUi.CreateScreen<TiltEditorScreen>("TiltEm_TiltEditor");
+            tiltEditor.GetComponent<TiltEditorScreen>().BuildUi();
+            Add(Root, "TiltEm_TiltEditor", "Tilt Editor", tiltEditor);
+
+            RectTransform orbitEditor = DebugUi.CreateScreen<OrbitEditorScreen>("TiltEm_OrbitEditor");
+            orbitEditor.GetComponent<OrbitEditorScreen>().BuildUi();
+            Add(Root, "TiltEm_OrbitEditor", "Orbit Editor", orbitEditor);
         }
 
         /// <summary>

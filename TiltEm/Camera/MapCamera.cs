@@ -22,8 +22,47 @@ namespace TiltEm
 
         public static MapCameraRotation MapRotation { get; private set; } = MapCameraRotation.PoleUp;
 
+        /// <summary>Whether something is holding the rotation mode and refusing the toggle.</summary>
+        public static bool RotationLocked { get; private set; }
+
+        /// <summary>What the player had chosen before the pin took the camera.</summary>
+        private static MapCameraRotation _beforeLock;
+
+        /// <summary>
+        /// Pins the rotation mode until <see cref="UnlockRotation"/>. The tilt editor holds this:
+        /// its handles are read against the system plane, so a camera that could roll onto the
+        /// body's own pole would turn them with the thing being dragged.
+        /// </summary>
+        public static void LockRotation(MapCameraRotation rotation)
+        {
+            //Only on the way in, so re-pinning an already-pinned camera does not overwrite the
+            //choice being held for the player.
+            if (!RotationLocked) _beforeLock = MapRotation;
+
+            MapRotation = rotation;
+            RotationLocked = true;
+        }
+
+        /// <summary>Gives the camera back, along with the mode the player had it on.</summary>
+        public static void UnlockRotation()
+        {
+            if (!RotationLocked) return;
+
+            RotationLocked = false;
+            MapRotation = _beforeLock;
+        }
+
         public static void ToggleMapRotation()
         {
+            //Answered on screen rather than ignored: the key otherwise looks broken, and the
+            //player has no other sign that something took the camera.
+            if (RotationLocked)
+            {
+                ScreenMessages.PostScreenMessage("Rotation held by the tilt editor", 3f,
+                    ScreenMessageStyle.UPPER_CENTER);
+                return;
+            }
+
             MapRotation = MapRotation == MapCameraRotation.PoleUp
                 ? MapCameraRotation.SystemUp
                 : MapCameraRotation.PoleUp;

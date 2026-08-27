@@ -52,6 +52,13 @@ namespace TiltEm
 
             DebugUi.CreateHeader(content, "Aids");
             DebugUi.CreateToggle<DrawAxesToggle>(content, "Draw tilt axes in map view");
+            DebugUi.CreateToggle<DrawPlaneNormalToggle>(content, "Draw orbital plane normal");
+
+            DebugUi.CreateSpacer(content);
+
+            DebugUi.CreateHeader(content, "Body editor");
+            DebugUi.CreateButton<ResetAllEditsButton>(DebugUi.CreateRowLayout(content).transform,
+                "Reset all edits");
         }
 
         // ReSharper disable once UnusedMember.Local
@@ -61,7 +68,7 @@ namespace TiltEm
             //tracking station at all. Falling back to whatever the camera is focused on keeps
             //the row useful there, marked so it cannot be mistaken for the real thing.
             CelestialBody dominant = OrbitPhysicsManager.DominantBody;
-            CelestialBody shown = dominant != null ? dominant : FocusedBody();
+            CelestialBody shown = dominant != null ? dominant : MapFocus.Body();
 
             _dominantBody.text = shown == null
                 ? "none"
@@ -74,18 +81,6 @@ namespace TiltEm
             _planetariumRotation.text = DebugFormat.Euler(Planetarium.Rotation);
             _zupRotation.text = DebugFormat.Euler(Planetarium.Zup.Rotation);
             _inverseRotAngle.text = Planetarium.InverseRotAngle.ToString("F2") + "°";
-        }
-
-        /// <summary>The focused body, walking up from a vessel or node to the body it orbits.</summary>
-        private static CelestialBody FocusedBody()
-        {
-            MapObject target = PlanetariumCamera.fetch == null ? null : PlanetariumCamera.fetch.target;
-
-            if (target == null) return null;
-            if (target.celestialBody != null) return target.celestialBody;
-            if (target.vessel != null) return target.vessel.mainBody;
-
-            return target.orbit == null ? null : target.orbit.referenceBody;
         }
     }
 
@@ -129,6 +124,19 @@ namespace TiltEm
         protected override void OnToggleChanged(bool state)
         {
             DebugOptions.DrawAxes = state;
+        }
+    }
+
+    internal class DrawPlaneNormalToggle : DebugScreenToggle
+    {
+        protected override void SetupValues()
+        {
+            SetToggle(DebugOptions.DrawPlaneNormal);
+        }
+
+        protected override void OnToggleChanged(bool state)
+        {
+            DebugOptions.DrawPlaneNormal = state;
         }
     }
 }

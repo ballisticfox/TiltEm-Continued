@@ -32,6 +32,18 @@ namespace TiltEm
             return v.x.ToString("F0") + "," + v.y.ToString("F0") + "," + v.z.ToString("F0");
         }
 
+        /// <summary>An angle in degrees, at the precision a dragged handle is worth reading to.</summary>
+        public static string Angle(double degrees)
+        {
+            return degrees.ToString("F3") + "°";
+        }
+
+        /// <summary>A distance in metres, shown as whole kilometres.</summary>
+        public static string Distance(double metres)
+        {
+            return (metres / 1000.0).ToString("N0") + " km";
+        }
+
         public static string Vector(Vector3 v)
         {
             return v.x.ToString("F1") + ", " + v.y.ToString("F1") + ", " + v.z.ToString("F1");

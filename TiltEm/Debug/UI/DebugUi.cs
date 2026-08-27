@@ -13,6 +13,22 @@ namespace TiltEm
     //hand-built approximation drifts every time the theme is touched.
     internal static class DebugUi
     {
+        /// <summary>One line of text, and the height every single-line element is given.</summary>
+        //Every element is pinned to a height and nothing is allowed to flex. A vertical layout
+        //group that runs out of room takes it out of whatever will give, and what gave here were
+        //the headings: they collapsed under their own larger text while every ordinary row kept
+        //its height, so the gap above a heading was never the gap between two rows.
+        private const float LineHeight = 22f;
+
+        /// <summary>A section heading, which carries a larger font.</summary>
+        private const float HeaderHeight = 28f;
+
+        /// <summary>A strip of buttons, which are taller than a line of text.</summary>
+        private const float ButtonHeight = 30f;
+
+        /// <summary>How much bigger a heading's text is than a row's.</summary>
+        private const float HeaderScale = 1.2f;
+
         private static GameObject _labelPrefab;
         private static GameObject _buttonPrefab;
         private static GameObject _togglePrefab;
@@ -108,9 +124,7 @@ namespace TiltEm
             _spacerPrefab = new GameObject("TiltEm_Spacer", typeof(RectTransform));
             _spacerPrefab.SetActive(false);
 
-            LayoutElement layout = _spacerPrefab.AddComponent<LayoutElement>();
-            layout.minHeight = 8f;
-            layout.preferredHeight = 8f;
+            FixHeight(_spacerPrefab.AddComponent<LayoutElement>(), 8f);
 
             Object.DontDestroyOnLoad(_spacerPrefab);
         }
@@ -145,7 +159,7 @@ namespace TiltEm
             layout.childControlHeight = true;
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
-            layout.spacing = 4f;
+            layout.spacing = 6f;
             layout.padding = new RectOffset(8, 8, 8, 8);
 
             return rect;
@@ -174,6 +188,8 @@ namespace TiltEm
 
             tmp.text = text;
 
+            FixHeight(layout, LineHeight);
+
             return tmp;
         }
 
@@ -181,9 +197,43 @@ namespace TiltEm
         {
             TextMeshProUGUI tmp = CreateLabel(parent, text);
             tmp.fontStyle = FontStyles.Bold;
-            tmp.fontSize *= 1.2f;
+            tmp.fontSize *= HeaderScale;
+
+            FixHeight(tmp, HeaderHeight);
 
             return tmp;
+        }
+
+        /// <summary>A couple of lines of wrapped prose, for a status line or a hint.</summary>
+        public static TextMeshProUGUI CreateNote(Transform parent, string text)
+        {
+            TextMeshProUGUI tmp = CreateLabel(parent, text);
+            tmp.enableWordWrapping = true;
+            tmp.alignment = TextAlignmentOptions.TopLeft;
+
+            //Two lines' worth whether or not it needs them, so the tab does not reflow every
+            //time the message underneath changes length.
+            FixHeight(tmp, LineHeight * 2f);
+
+            return tmp;
+        }
+
+        /// <summary>
+        /// Pins an element to a height and stops it flexing. A negative height hands the
+        /// decision back to the content, which is what a block of many lines needs.
+        /// </summary>
+        private static void FixHeight(TextMeshProUGUI tmp, float height)
+        {
+            FixHeight(tmp == null ? null : tmp.GetComponentInParent<LayoutElement>(), height);
+        }
+
+        private static void FixHeight(LayoutElement layout, float height)
+        {
+            if (layout == null) return;
+
+            layout.minHeight = height;
+            layout.preferredHeight = height;
+            layout.flexibleHeight = 0f;
         }
 
         /// <summary>A name on the left and its value on the right, returned so it can be updated.</summary>
@@ -200,7 +250,7 @@ namespace TiltEm
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
 
-            row.AddComponent<LayoutElement>().minHeight = 20f;
+            FixHeight(row.AddComponent<LayoutElement>(), LineHeight);
 
             CreateLabel(row.transform, name);
 
@@ -217,6 +267,9 @@ namespace TiltEm
             tmp.enableWordWrapping = false;
             tmp.alignment = TextAlignmentOptions.TopLeft;
 
+            //Back to the content: a table is as tall as it has rows.
+            FixHeight(tmp, -1f);
+
             return tmp;
         }
 
@@ -230,7 +283,7 @@ namespace TiltEm
             {
                 layout.preferredWidth = -1;
                 layout.flexibleWidth = 1;
-                layout.minHeight = 30f;
+                FixHeight(layout, ButtonHeight);
             }
 
             TextMeshProUGUI tmp = go.GetComponentInChildren<TextMeshProUGUI>();
@@ -238,6 +291,7 @@ namespace TiltEm
 
             T component = go.AddComponent<T>();
             component.button = go.GetComponent<Button>();
+            component.label = tmp;
 
             //Activating runs Awake, which is where the component wires itself up.
             go.SetActive(true);
@@ -255,6 +309,7 @@ namespace TiltEm
             {
                 layout.preferredWidth = -1;
                 layout.flexibleWidth = 1;
+                FixHeight(layout, LineHeight);
             }
 
             //The stock toggle is a fixed width inside its wrapper; stretch it to the full row.
@@ -301,7 +356,7 @@ namespace TiltEm
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
 
-            go.AddComponent<LayoutElement>().minHeight = 30f;
+            FixHeight(go.AddComponent<LayoutElement>(), ButtonHeight);
 
             return go;
         }

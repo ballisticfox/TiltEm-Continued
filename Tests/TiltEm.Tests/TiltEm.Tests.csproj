@@ -34,6 +34,12 @@
     <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Frames/TiltEmFrames.cs">
       <Link>production/TiltEmFrames.cs</Link>
     </Compile>
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Editor/EditExport.cs">
+      <Link>production/EditExport.cs</Link>
+    </Compile>
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Editor/HandleAxes.cs">
+      <Link>production/HandleAxes.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <!-- Stand-in types. Benchmarks needs frame members the shims deliberately omit. -->

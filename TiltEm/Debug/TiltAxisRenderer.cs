@@ -22,17 +22,6 @@ namespace TiltEm
         /// <summary>Half-length of each axis, as a multiple of the body's drawn radius.</summary>
         private const float ArmLength = 15f;
 
-        /// <summary>Line thickness as a fraction of camera distance, so it stays legible.</summary>
-        //Width is the one thing still computed per frame. Unlike position, a frame of lag in it
-        //cannot be seen.
-        private const float WidthPerDistance = 0.004f;
-
-        /// <summary>Ceiling on that thickness, as a fraction of the arm's length.</summary>
-        //Without it the width grows without bound as you zoom out, and past roughly a tenth of
-        //the arm the three lines stop reading as axes and become camera-facing slabs sitting
-        //across the view. Going sub-pixel far away is the right trade.
-        private const float MaxWidthFraction = 0.01f;
-
 
         //Blue marks the pole, the axis worth looking at. These are not Unity's gizmo colours.
         private static readonly Vector3[] Directions = { Vector3.right, Vector3.up, Vector3.forward };
@@ -114,7 +103,7 @@ namespace TiltEm
         {
             _root = new GameObject("TiltEmAxes");
 
-            Material material = new Material(LineShader());
+            Material material = new Material(GizmoLines.Shader());
 
             _lines = new LineRenderer[Directions.Length];
 
@@ -138,12 +127,11 @@ namespace TiltEm
         }
 
         /// <summary>Keeps the lines a roughly constant thickness on screen as you zoom.</summary>
+        //Width is the one thing still computed per frame. Unlike position, a frame of lag in it
+        //cannot be seen.
         private void UpdateWidth()
         {
-            if (PlanetariumCamera.fetch == null) return;
-
-            float width = Mathf.Min(PlanetariumCamera.fetch.Distance * WidthPerDistance,
-                _arm * MaxWidthFraction);
+            float width = GizmoLines.WidthFor(_arm);
 
             foreach (LineRenderer line in _lines)
             {
@@ -154,21 +142,6 @@ namespace TiltEm
         private void Show(bool visible)
         {
             if (_root != null && _root.activeSelf != visible) _root.SetActive(visible);
-        }
-
-        /// <summary>An unlit shader KSP is known to carry, with fallbacks.</summary>
-        private static Shader LineShader()
-        {
-            Shader shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended")
-                            ?? Shader.Find("Particles/Alpha Blended")
-                            ?? Shader.Find("Sprites/Default");
-
-            if (shader == null)
-            {
-                Debug.LogWarning("[TiltEm]: no shader found for the tilt axes; they will not draw.");
-            }
-
-            return shader;
         }
 
         private static CelestialBody TargetBody()

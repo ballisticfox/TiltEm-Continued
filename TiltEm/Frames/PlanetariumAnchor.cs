@@ -78,6 +78,29 @@ namespace TiltEm
             return ZupAnchorBody == null || ReferenceEquals(ZupAnchorBody, body);
         }
 
+        /// <summary>
+        /// Re-latches the anchor to the sky exactly as it stands, so that changing this body's
+        /// tilt or spin moves the body and leaves the sky where it is.
+        /// </summary>
+        //The opposite of what AnchorFor does, and deliberately so. At a threshold crossing the
+        //body's orientation is the thing that must not jump, so the anchor is derived from it and
+        //the sky takes up the difference. When a player drags a pole the body is the thing being
+        //moved, and deriving the anchor from its old frame would hand the whole change to the sky:
+        //the planet would sit still while everything else swung around it.
+        public static void HoldSkyStill(CelestialBody body)
+        {
+            //Only the body holding the rotating frame drives Zup. Changing any other body's tilt
+            //already moves that body, and there is nothing to re-latch.
+            if (body == null || !ReferenceEquals(ZupAnchorBody, body)) return;
+
+            ZupAnchor = TiltEmFrames.OrIdentity(Planetarium.Zup);
+
+            //Derived from initialRotation rather than read off body.rotationAngle: the spin
+            //handle writes the first and CBUpdate has yet to recompute the second, so the stored
+            //angle is a tick stale and the sky would take up that difference.
+            ZupAnchorRotationAngle = RotationAngleAt(body, Planetarium.GetUniversalTime());
+        }
+
         /// <summary>Drops the anchor so the next rotating body re-latches.</summary>
         //Planetarium.Awake rebuilds Zup, so an anchor from the old frame is invalid.
         public static void ResetZupAnchor()

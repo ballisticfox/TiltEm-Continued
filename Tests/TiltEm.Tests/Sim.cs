@@ -178,6 +178,19 @@ namespace TiltEm.Verification
         }
 
         /// <summary>
+        /// Mirrors PlanetariumAnchor.HoldSkyStill, which the body editor calls after writing a
+        /// new tilt or spin. Re-latches against the sky as it stands rather than against the
+        /// body's own frame, which is what makes the change move the body.
+        /// </summary>
+        public void HoldSkyStill(SimBody body, double ut)
+        {
+            if (_zupAnchorBody != body.Name) return;
+
+            ZupAnchor = TiltEmFrames.OrIdentity(Zup);
+            ZupAnchorRotationAngle = (body.InitialRotation + 360.0 * (1.0 / body.RotationPeriod) * ut) % 360.0;
+        }
+
+        /// <summary>
         /// Mirrors PSystemSetup.SetSpaceCentre, which flips the home body into the rotating
         /// frame by writing the flag directly. It does not route through setRotatingFrame, so
         /// the mod's prefix never fires and no anchor is latched; the next CBUpdate is what
