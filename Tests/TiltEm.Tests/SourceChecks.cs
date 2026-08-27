@@ -26,6 +26,41 @@ namespace TiltEm.Verification
             ElementReadoutsAreWiredCorrectly();
             TheAnchoredZupIsKeyedToItsOwnBody();
             TheRotatingFrameSurvivesAnSoiChange();
+            PrincipiaTurnsTheModOff();
+        }
+
+        /// <summary>
+        /// Principia rewrites the same reference frames Tilt'Em does, so every entry point has
+        /// to stand down when it is installed. Nothing numeric can see this, and a half-disabled
+        /// mod is worse than either alone, so the three gates are pinned here.
+        /// </summary>
+        private static void PrincipiaTurnsTheModOff()
+        {
+            var check = StripComments(Read(Path.Combine("TiltEm", "Loader", "PrincipiaCheck.cs")));
+
+            // The DLL name, not a KSPAssembly name: Principia declares no KSPAssembly attribute,
+            // so KSP falls back to the file name.
+            Present("-", "Principia is detected by its adapter assembly", check,
+                @"""principia\.ksp_plugin_adapter""");
+            Present("-", "the detection reads KSP's loaded assemblies", check,
+                @"AssemblyLoader\.loadedAssemblies");
+            Present("-", "and matches on the DLL name", check, @"\.dllName\s*==");
+
+            var gated = new[]
+            {
+                new[] { "TiltEm.cs", @"HarmonyInstance\.PatchAll" },
+                new[] { "Loader" + Path.DirectorySeparatorChar + "TiltLoader.cs", @"AddTiltData" },
+                new[] { "Loader" + Path.DirectorySeparatorChar + "OrbitFrameLoader.cs", @"Events\.OnPostLoad\.Add" },
+            };
+
+            foreach (var entry in gated)
+            {
+                var text = StripComments(Read(Path.Combine("TiltEm", entry[0])));
+
+                // Ordering matters, not just presence: the guard has to come before the work.
+                Present("-", entry[0] + " stands down when Principia is installed", text,
+                    @"PrincipiaCheck\.Installed[\s\S]*?" + entry[1]);
+            }
         }
 
         /// <summary>
@@ -327,7 +362,10 @@ namespace TiltEm.Verification
 
             Absent("C1", "no selective TRACK_Phys vessel loop", mod, @"TRACK_Phys");
             Absent("C1", "no iteration over loaded vessels", mod, @"VesselsLoaded");
-            Absent("C2", "no SetPosition call (CoM/root mismatch)", mod, @"\.SetPosition\s*\(");
+            // Narrowed to a vessel receiver: LineRenderer has a SetPosition of its own, and
+            // the defect is specifically moving a vessel by its root transform.
+            Absent("C2", "no vessel SetPosition call (CoM/root mismatch)", mod,
+                @"[Vv]essel\w*\s*\.\s*SetPosition\s*\(");
             Absent("C3", "no HoldVesselUnpack call", mod, @"HoldVesselUnpack");
             Absent("C3", "no GoOnRails call", mod, @"GoOnRails");
             Absent("C4", "no rotating-frame transition handler dereferencing data.host", mod, @"data\.host");

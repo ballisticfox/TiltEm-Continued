@@ -15,11 +15,6 @@ namespace TiltEm
         public static TiltEm Singleton;
         public static HarmonyLib.Harmony HarmonyInstance = new HarmonyLib.Harmony("TiltEm");
 
-#if DEBUG
-        public static bool[] DebugSwitches { get; } = new bool[10];
-        public static Action[] DebugActions { get; } = new Action[10];
-#endif
-
         /// <summary>
         /// Built-in tilts, used for any body no config gives a tilt. These are in the legacy Euler
         /// format the mod originally shipped with and are converted to poles on load, so the
@@ -80,6 +75,14 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Global
         public void Awake()
         {
+            //Before anything else: with Principia installed there is nothing to patch or hook,
+            //and destroying the addon also stops Update watching for the map-rotation key.
+            if (PrincipiaCheck.Installed)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
             Singleton = this;
             DontDestroyOnLoad(this);
             Debug.Log("[TiltEm]: TiltEm started!");
@@ -88,11 +91,6 @@ namespace TiltEm
             RotatingFrameEvents.Init();
             HarmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
             GameEvents.onGameSceneSwitchRequested.Add(SceneRequested);
-
-#if DEBUG
-            GameEvents.onGUIApplicationLauncherReady.Add(EnableToolBar);
-            DefineDebugActions();
-#endif
         }
 
         //V is stock's flight camera-mode key; gated on map-up and CAMERACONTROLS so it stays
@@ -107,42 +105,16 @@ namespace TiltEm
             MapCamera.ToggleMapRotation();
         }
 
-        private static bool MapViewIsUp()
+        /// <summary>Whether a map camera is up, in flight or in the tracking station.</summary>
+        internal static bool MapViewIsUp()
         {
             return HighLogic.LoadedScene == GameScenes.TRACKSTATION
                    || (HighLogic.LoadedSceneIsFlight && MapView.MapIsEnabled);
         }
 
-#if DEBUG
-
-        // ReSharper disable once InconsistentNaming
-        // ReSharper disable once UnusedMember.Global
-        public void OnGUI()
-        {
-            TiltEmGui.SetStyles();
-            TiltEmGui.CheckWindowLock();
-            TiltEmGui.DrawGui();
-        }
-
-#endif
-
         #endregion
 
         #region Game events
-
-#if DEBUG
-
-        // ReSharper disable once MemberCanBeMadeStatic.Local
-        private void EnableToolBar()
-        {
-            var buttonTexture = GameDatabase.Instance.GetTexture("TiltEm/TiltEmButton", false);
-            GameEvents.onGUIApplicationLauncherReady.Remove(EnableToolBar);
-
-            ApplicationLauncher.Instance.AddModApplication(() => TiltEmGui.Display = true, () => TiltEmGui.Display = false,
-                () => { }, () => { }, () => { }, () => { }, ApplicationLauncher.AppScenes.ALWAYS, buttonTexture);
-        }
-
-#endif
 
         // ReSharper disable once MemberCanBeMadeStatic.Local
         private void SceneRequested(GameEvents.FromToAction<GameScenes, GameScenes> data)
@@ -222,24 +194,6 @@ namespace TiltEm
 
         #region Private methods
 
-#if DEBUG
-
-        /// <summary>Actions for the A0-A9 debug buttons.</summary>
-        public void DefineDebugActions()
-        {
-            DebugActions[0] = () => { };
-            DebugActions[1] = () => { };
-            DebugActions[2] = () => { };
-            DebugActions[3] = () => { };
-            DebugActions[4] = () => { };
-            DebugActions[5] = () => { };
-            DebugActions[6] = () => { };
-            DebugActions[7] = () => { };
-            DebugActions[8] = () => { };
-            DebugActions[9] = () => { };
-        }
-
-#endif
 
         #endregion
     }

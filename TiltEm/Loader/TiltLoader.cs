@@ -12,6 +12,12 @@ namespace TiltEm
     {
         public void Awake()
         {
+            if (PrincipiaCheck.Installed)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
             DontDestroyOnLoad(this);
 
             int tilts = 0;

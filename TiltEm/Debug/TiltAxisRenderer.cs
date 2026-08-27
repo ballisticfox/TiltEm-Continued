@@ -1,118 +1,184 @@
-﻿using System.Collections.Generic;
-using UnityEngine;
-using Vectrosity;
+﻿using UnityEngine;
 // ReSharper disable UnusedMember.Global
 
-#if DEBUG
 namespace TiltEm
 {
     /// <summary>
-    /// Draws the focused body's three axes in the tracking station, so you can see a tilt instead
-    /// of reading it off a number. Debugging aid only.
+    /// Draws the focused body's three axes wherever a map camera is up, so you can see a tilt
+    /// instead of reading it off a number. Debugging aid only.
     /// </summary>
-    [KSPAddon(KSPAddon.Startup.TrackingStation, false)]
+    //The axes are children of the body's scaled transform rather than lines rebuilt in world
+    //space each frame, and that is the whole design: position, rotation, and the floating-origin
+    //shift ScaledSpace applies every LateUpdate all arrive through the parent, so nothing here
+    //has to win a race with the camera. The Vectrosity version drew during Update, before
+    //PlanetariumCamera.LateUpdate had moved the camera and before scaled space had shifted, so
+    //its lines slid off the body and flickered.
+    //EveryScene rather than two attributes: AddonLoader only ever reads the first KSPAddon
+    //on a type, so a second one for flight would be silently ignored. The scene test lives
+    //in TargetBody instead.
+    [KSPAddon(KSPAddon.Startup.EveryScene, false)]
     public class TiltAxisRenderer : MonoBehaviour
     {
-        /// <summary>One axis: its fixed appearance, plus the line it reuses each frame.</summary>
-        private class Axis
-        {
-            public readonly string Name;
-            public readonly Vector3 Direction;
-            public readonly Color Color;
-            public readonly List<Vector3> Points = new List<Vector3> { Vector3.zero, Vector3.zero };
-            public VectorLine Line;
+        /// <summary>Half-length of each axis, as a multiple of the body's drawn radius.</summary>
+        private const float ArmLength = 15f;
 
-            public Axis(string name, Vector3 direction, Color color)
-            {
-                Name = name;
-                Direction = direction;
-                Color = color;
-            }
-        }
+        /// <summary>Line thickness as a fraction of camera distance, so it stays legible.</summary>
+        //Width is the one thing still computed per frame. Unlike position, a frame of lag in it
+        //cannot be seen.
+        private const float WidthPerDistance = 0.004f;
 
-        /// <summary>Half-length of each axis, as a fraction of the body's radius.</summary>
-        private const double ArmLength = 0.0025;
+        /// <summary>Ceiling on that thickness, as a fraction of the arm's length.</summary>
+        //Without it the width grows without bound as you zoom out, and past roughly a tenth of
+        //the arm the three lines stop reading as axes and become camera-facing slabs sitting
+        //across the view. Going sub-pixel far away is the right trade.
+        private const float MaxWidthFraction = 0.01f;
 
-        /// <summary>The scaled-space layer the tracking station renders bodies on.</summary>
-        private const int ScaledSpaceLayer = 31;
 
         //Blue marks the pole, the axis worth looking at. These are not Unity's gizmo colours.
-        private readonly Axis[] _axes =
-        {
-            new Axis("AxialTiltLeftRight", Vector3.right, Color.red),
-            new Axis("AxialTiltUpDown", Vector3.up, Color.blue),
-            new Axis("AxialTiltFwdBack", Vector3.forward, Color.green),
-        };
+        private static readonly Vector3[] Directions = { Vector3.right, Vector3.up, Vector3.forward };
+        private static readonly Color[] Colors = { Color.red, Color.blue, Color.green };
 
-        public void Update()
+        private float _arm;
+        private GameObject _root;
+        private LineRenderer[] _lines;
+        private CelestialBody _attachedTo;
+
+        //LateUpdate to sit alongside stock's own line renderers, though nothing here needs it.
+        public void LateUpdate()
         {
-            CelestialBody body = TargetBody();
+            CelestialBody body = DebugOptions.DrawAxes ? TargetBody() : null;
 
             if (body == null || body.scaledBody == null)
             {
-                Hide();
+                Show(false);
                 return;
             }
 
+            if (!ReferenceEquals(body, _attachedTo)) Attach(body);
+
+            Show(true);
+            UpdateWidth();
+        }
+
+        public void OnDestroy()
+        {
+            if (_root != null) Destroy(_root);
+        }
+
+        /// <summary>Hangs the axes off the body's scaled transform, sized to that body.</summary>
+        private void Attach(CelestialBody body)
+        {
+            _attachedTo = body;
+
+            if (_root == null) Build();
+
             Transform scaled = body.scaledBody.transform;
-            float arm = (float)(body.Radius * ArmLength);
 
-            foreach (Axis axis in _axes)
+            //The body's own layer, not a constant of ours. Layer 31 belongs to whichever
+            //camera is drawing orbit lines: past max3DlineDrawDist MapView switches Vectrosity
+            //to its 2D path and hands 31 to the screen-space canvas camera, which then draws our
+            //world-space lines through a camera positioned in screen pixels. The scaled bodies
+            //keep their own layer at every zoom, so sharing it keeps the axes with them.
+            SetLayer(body.scaledBody.layer);
+
+            _root.transform.SetParent(scaled, false);
+            _root.transform.localPosition = Vector3.zero;
+            _root.transform.localRotation = Quaternion.identity;
+
+            //Cancelling the parent's scale lets everything inside be written in scaled-space
+            //units. Bodies are spheres, so the scale is uniform and one axis is enough to read.
+            float scale = scaled.localScale.x;
+            _root.transform.localScale = Vector3.one / scale;
+
+            _arm = (float)body.Radius * ScaledSpace.InverseScaleFactor * ArmLength;
+
+            for (int i = 0; i < _lines.Length; i++)
             {
-                Draw(axis, scaled, arm);
+                _lines[i].SetPosition(0, Directions[i] * _arm);
+                _lines[i].SetPosition(1, Directions[i] * -_arm);
             }
         }
 
-        public void OnDisable()
+        /// <summary>Puts the axes on the same layer as the body they annotate.</summary>
+        private void SetLayer(int layer)
         {
-            foreach (Axis axis in _axes)
+            _root.layer = layer;
+
+            foreach (LineRenderer line in _lines)
             {
-                if (axis.Line != null) VectorLine.Destroy(ref axis.Line);
+                line.gameObject.layer = layer;
             }
         }
 
-        private void Hide()
+        private void Build()
         {
-            foreach (Axis axis in _axes)
+            _root = new GameObject("TiltEmAxes");
+
+            Material material = new Material(LineShader());
+
+            _lines = new LineRenderer[Directions.Length];
+
+            for (int i = 0; i < _lines.Length; i++)
             {
-                if (axis.Line != null) axis.Line.active = false;
+                GameObject go = new GameObject("TiltEmAxis" + i);
+                go.transform.SetParent(_root.transform, false);
+
+                LineRenderer line = go.AddComponent<LineRenderer>();
+                line.material = material;
+                line.startColor = Colors[i];
+                line.endColor = Colors[i];
+                line.positionCount = 2;
+
+                //Local, not world: this is what makes the lines follow the body for free.
+                line.useWorldSpace = false;
+                line.alignment = LineAlignment.View;
+
+                _lines[i] = line;
             }
         }
 
-        private static void Draw(Axis axis, Transform scaled, float arm)
+        /// <summary>Keeps the lines a roughly constant thickness on screen as you zoom.</summary>
+        private void UpdateWidth()
         {
-            //The body's own axis, rotated into world space. The tilt lives in that rotation.
-            Vector3 offset = scaled.rotation * axis.Direction * arm;
+            if (PlanetariumCamera.fetch == null) return;
 
-            axis.Points[0] = scaled.position + offset;
-            axis.Points[1] = scaled.position - offset;
+            float width = Mathf.Min(PlanetariumCamera.fetch.Distance * WidthPerDistance,
+                _arm * MaxWidthFraction);
 
-            if (axis.Line == null) axis.Line = CreateLine(axis);
-
-            axis.Line.active = true;
-            axis.Line.Draw3D();
+            foreach (LineRenderer line in _lines)
+            {
+                line.widthMultiplier = width;
+            }
         }
 
-        //Vectrosity holds the point list by reference, so later frames only move the endpoints.
-        private static VectorLine CreateLine(Axis axis)
+        private void Show(bool visible)
         {
-            var line = new VectorLine(axis.Name, axis.Points, 2f, LineType.Continuous);
+            if (_root != null && _root.activeSelf != visible) _root.SetActive(visible);
+        }
 
-            line.rectTransform.gameObject.layer = ScaledSpaceLayer;
-            line.color = axis.Color;
-            line.smoothColor = true;
-            line.UpdateImmediate = true;
+        /// <summary>An unlit shader KSP is known to carry, with fallbacks.</summary>
+        private static Shader LineShader()
+        {
+            Shader shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended")
+                            ?? Shader.Find("Particles/Alpha Blended")
+                            ?? Shader.Find("Sprites/Default");
 
-            return line;
+            if (shader == null)
+            {
+                Debug.LogWarning("[TiltEm]: no shader found for the tilt axes; they will not draw.");
+            }
+
+            return shader;
         }
 
         private static CelestialBody TargetBody()
         {
-            if (HighLogic.LoadedScene != GameScenes.TRACKSTATION) return null;
+            //The same rule the map-rotation key uses, so the two never disagree about whether
+            //a map camera is up.
+            if (!TiltEm.MapViewIsUp()) return null;
             if (PlanetariumCamera.fetch == null || PlanetariumCamera.fetch.target == null) return null;
 
             return PlanetariumCamera.fetch.target.celestialBody;
         }
     }
 }
-#endif

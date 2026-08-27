@@ -17,6 +17,14 @@ namespace TiltEm
     {
         public void Awake()
         {
+            //Destroyed rather than flagged: this one rewrites the system prefab, so it must not
+            //reach Start and register the callback at all.
+            if (PrincipiaCheck.Installed)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
             //Unlike the other loaders this one has to outlive its own Awake, since the work
             //happens later on Kopernicus's callback.
             DontDestroyOnLoad(this);
