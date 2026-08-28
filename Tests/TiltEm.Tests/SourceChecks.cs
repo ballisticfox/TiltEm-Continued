@@ -249,7 +249,9 @@ namespace TiltEm.Verification
             var bodyAxes = StripComments(Read(Path.Combine("TiltEm", "Camera", "BodyAxes.cs")));
 
             Present("G2", "CelestialNorth reads the tilt's own pole", bodyAxes,
-                @"CelestialNorth[\s\S]{0,1200}?tilt\.Tilt\.Z\.xzy");
+                @"CelestialNormal[\s\S]{0,600}?return tilt\.Tilt\.Z;");
+            Present("G2", "and hands it back swizzled into Unity's axes", bodyAxes,
+                @"CelestialNorth\(CelestialBody body\)[\s\S]{0,200}?CelestialNormal\(body\)\.xzy");
             Present("G3", "WorldNorth reads BodyFrame's pole", bodyAxes,
                 @"WorldNorth[\s\S]{0,1200}?body\.BodyFrame\.Z\.xzy");
 
@@ -265,7 +267,7 @@ namespace TiltEm.Verification
             Present("G5", "the walk terminates on a self-referencing parent", bodyAxes,
                 @"ReferenceEquals\(parent,\s*current\)");
             Present("G5", "an unconfigured plane falls back to the star's pole", bodyAxes,
-                @"TryGetOrbitalPlane[\s\S]{0,200}?return CelestialNorth\(star\)");
+                @"TryGetOrbitalPlane[\s\S]{0,200}?CelestialNormal\(star\)");
             Present("G5", "the toggle is gated on the map being up", tiltEmSrc,
                 @"MapViewIsUp\(\)\s*\)\s*return");
             Present("G5", "and on camera controls being unlocked", tiltEmSrc,
@@ -276,6 +278,71 @@ namespace TiltEm.Verification
                 @"MapCameraRotation\.SystemUp[\s\S]{0,120}?BodyAxes\.SystemNorth");
             Present("G5", "and still uses the body pole in the other mode", mapCam,
                 @"BodyAxes\.CelestialNorth\s*\(");
+
+            //G9. The System flight camera. Stock's Modes enum cannot grow a sixth value, so the
+            //mode is Orbital plus a flag, and everything that makes it a mode rather than a
+            //latent state is arrangement rather than arithmetic: where it sits in the cycle, what
+            //takes it away again, and which of the two frames it reaches.
+            var flightFoR = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "FlightGlobals_GetFoR.cs")));
+            var systemMode = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Camera", "FlightCamera_SystemMode.cs")));
+            var flightFrame = StripComments(Read(Path.Combine("TiltEm", "Camera", "FlightCameraFrame.cs")));
+
+            Present("G9", "the flight camera can take the system plane", flightFoR,
+                @"FlightCameraFrame\.SystemUp[\s\S]{0,120}?BodyAxes\.WorldSystemNorth");
+            //The orbital frame only. The surface frame is about which way is north on the ground,
+            //which the plane of the system has nothing to say about.
+            Present("G9", "and only for the orbital frame", flightFoR,
+                @"mode\s*==\s*FoRModes\.OBT_ABS\s*&&\s*FlightCameraFrame\.SystemUp");
+            Present("G9", "the world normal is used in flight, not the celestial one", flightFoR,
+                @"WorldSystemNorth");
+            Absent("G9", "and the flight camera never takes the celestial form", flightFoR,
+                @"BodyAxes\.SystemNorth\s*\(");
+
+            Present("G9", "the extra step sits after Orbital", systemMode,
+                @"mode\s*!=\s*FlightCamera\.Modes\.ORBITAL\s*\|\|\s*FlightCameraFrame\.SystemUp[\s\S]{0,80}?return true");
+            Present("G9", "and re-enters the mode so the frame lerps rather than cuts", systemMode,
+                @"setMode\(FlightCamera\.Modes\.ORBITAL\)");
+            //Last, after both the re-entry and the restore have been let through: whatever is
+            //left is the player choosing a different mode.
+            Present("G9", "any other mode change drops the system frame", systemMode,
+                @"SystemCameraMode\.Switching[\s\S]{0,700}?FlightCameraFrame\.SystemUp = false");
+            //But not a restore. Coming back from map view re-asserts the mode the vessel was
+            //saved in, which is Orbital, and treating that as a choice would take the mode away.
+            Present("G9", "re-asserting the same mode keeps the system frame", systemMode,
+                @"m\s*==\s*__state\s*&&\s*FlightCameraFrame\.SystemUp");
+            Present("G9", "which needs the mode setMode is about to overwrite", systemMode,
+                @"out FlightCamera\.Modes __state[\s\S]{0,120}?__state = __instance\.mode");
+            Present("G9", "a scene change drops it too", tiltEmSrc, @"FlightCameraFrame\.Reset\(\)");
+
+            //Stock's own message object, rewritten and re-posted. PostMessage rewrites a message
+            //that is still on screen in place, which is what keeps mode changes on one line; and
+            //removing it first would destroy its text object through Object.Destroy, deferred to
+            //the end of the frame, leaving a live-looking reference to write into and lose.
+            Present("G9", "the readout rewrites stock's own message", systemMode,
+                @"readout\.message = Localizer\.Format[\s\S]{0,120}?PostScreenMessage\(readout\)");
+            Absent("G9", "and never removes it first", systemMode, @"RemoveMessage");
+
+            //Same rule for the map rotation key, which writes the same kind of line.
+            Present("G6", "the rotation key reuses one message so its line is replaced", mapNorth,
+                @"Readout\.message = text[\s\S]{0,80}?PostScreenMessage\(Readout\)");
+            Absent("G6", "and never posts a bare string, which would stack a new line", mapNorth,
+                @"PostScreenMessage\(""");
+
+            //Stock wraps every mode name in "Camera: <<1>>" and writes the names in caps, so the
+            //one this adds has to arrive the same way or it reads as a different kind of message.
+            Present("G9", "the readout uses stock's own Camera: wrapper", systemMode,
+                @"Localizer\.Format\(""#autoLOC_133776"", Name\)");
+            Present("G9", "and a localisable name that falls back to English", systemMode,
+                @"TryGetStringByTag\(""#autoLOC_TiltEm_CameraSystem""[\s\S]{0,120}?""SYSTEM""");
+            Present("G9", "which the shipped localisation carries", 
+                Read(Path.Combine("Resources", "Localization", "en-us", "TiltEmLoc.cfg")),
+                @"#autoLOC_TiltEm_CameraSystem\s*=\s*SYSTEM");
+            Present("G9", "the mode is session state, not something a save carries", flightFrame,
+                @"public static bool SystemUp");
+            //Stock leaves Orbital below two kilometres, and Auto swaps what it resolves to
+            //without calling setMode at all. Reading the mode back covers both without a hook.
+            Present("G9", "and cannot outlive the Orbital mode it rides on", flightFrame,
+                @"_systemUp && IsOrbital\(\)[\s\S]{0,300}?mode == FlightCamera\.Modes\.ORBITAL");
 
             //G7. The correction has to be substituted where stock computes endRot, not applied
             //after LateUpdate has finished. A postfix samples the pitch axis after
