@@ -35,18 +35,21 @@ namespace TiltEm
         //rotation set here is not stored against a stale one.
         public void LateUpdate()
         {
-            CelestialBody body = DebugOptions.DrawPlaneNormal ? TargetBody() : null;
-
-            if (body == null || body.scaledBody == null || !HasOrbit(body))
+            using (TiltEmProfiler.PlaneNormalRenderer.Sample())
             {
-                Show(false);
-                return;
+                CelestialBody body = DebugOptions.DrawPlaneNormal ? TargetBody() : null;
+
+                if (body == null || body.scaledBody == null || !HasOrbit(body))
+                {
+                    Show(false);
+                    return;
+                }
+
+                if (!ReferenceEquals(body, _attachedTo)) Attach(body);
+
+                Show(true);
+                Aim(body);
             }
-
-            if (!ReferenceEquals(body, _attachedTo)) Attach(body);
-
-            Show(true);
-            Aim(body);
         }
 
         public void OnDestroy()

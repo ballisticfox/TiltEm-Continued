@@ -1,7 +1,7 @@
 {
     "NAME":     "Tilt 'Em",
-    "URL":      "https://github.com/ballisticfox/TiltEm-Continued/raw/master/Resources/TiltEm.version",
-    "DOWNLOAD": "https://github.com/ballisticfox/TiltEm-Continued/releases/download/2.0.0/TiltEm.2.0.0.zip",
+    "URL":      "https://github.com/ballisticfox/TiltEm-Continued/raw/main/Resources/TiltEm.version",
+    "DOWNLOAD": "https://github.com/ballisticfox/TiltEm-Continued/releases/download/2.0.1/TiltEm.2.0.1.zip",
     "GITHUB": {
         "USERNAME":   "ballisticfox",
         "REPOSITORY": "TiltEm-Continued"
@@ -9,7 +9,7 @@
     "VERSION": {
         "MAJOR": 2,
         "MINOR": 0,
-        "PATCH": 0
+        "PATCH": 1
     },
     "KSP_VERSION": {
         "MAJOR": 1,

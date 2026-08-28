@@ -23,23 +23,26 @@ namespace TiltEm
             int tilts = 0;
             int planes = 0;
 
-            foreach (CelestialBody body in FlightGlobals.Bodies)
+            using (TiltEmProfiler.LoadTilts.Sample())
             {
-                //TryReadEffective, not TryRead: it also applies tiltRelativeToParent. Going
-                //through TiltConfig keeps this and the parent-relative orbit rebase from
-                //disagreeing about which pole a body actually has.
-                if (TiltConfig.TryReadEffective(body, out BodyTilt tilt))
+                foreach (CelestialBody body in FlightGlobals.Bodies)
                 {
-                    TiltEm.AddTiltData(body, tilt);
-                    tilts++;
-                }
+                    //TryReadEffective, not TryRead: it also applies tiltRelativeToParent. Going
+                    //through TiltConfig keeps this and the parent-relative orbit rebase from
+                    //disagreeing about which pole a body actually has.
+                    if (TiltConfig.TryReadEffective(body, out BodyTilt tilt))
+                    {
+                        TiltEm.AddTiltData(body, tilt);
+                        tilts++;
+                    }
 
-                //Only meaningful on a star, but registered for whatever body declares it: the map
-                //camera looks it up on whichever body its walk up the tree lands on.
-                if (TiltConfig.TryReadOrbitalPlane(body, out BodyTilt plane))
-                {
-                    TiltEm.AddOrbitalPlane(body, plane);
-                    planes++;
+                    //Only meaningful on a star, but registered for whatever body declares it: the map
+                    //camera looks it up on whichever body its walk up the tree lands on.
+                    if (TiltConfig.TryReadOrbitalPlane(body, out BodyTilt plane))
+                    {
+                        TiltEm.AddOrbitalPlane(body, plane);
+                        planes++;
+                    }
                 }
             }
 

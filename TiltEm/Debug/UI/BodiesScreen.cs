@@ -35,7 +35,10 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Update()
         {
-            _table.text = BuildTable();
+            using (TiltEmProfiler.DebugUiBodies.Sample())
+            {
+                _table.text = BuildTable();
+            }
         }
 
         private static string BuildTable()

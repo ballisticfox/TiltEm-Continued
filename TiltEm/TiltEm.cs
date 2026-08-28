@@ -87,6 +87,7 @@ namespace TiltEm
             //has to start from the new scene's value rather than swing to it, and an editor
             //session that survived the change would hold the camera in a scene it cannot see.
             BodyEditor.SceneChanged();
+            FlightCameraFrame.Reset();
             MapCamera.ResetMapNorth();
 
             //Only the destination matters; gating on the source too would skip the main-menu to
