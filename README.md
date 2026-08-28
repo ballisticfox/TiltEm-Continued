@@ -6,7 +6,7 @@
 
 # Tilt'Em
 
-*This mod adds [planetary axial tilt](https://simple.wikipedia.org/wiki/Axial_tilt) for [Kerbal Space Program (KSP)](https://kerbalspaceprogram.com)*
+*This mod adds [planetary axial tilt](https://simple.wikipedia.org/wiki/Axial_tilt) for [Kerbal Space Program (KSP)](https://kerbalspaceprogram.com)* | *Original Source can be found [here](https://github.com/LunaMultiplayer/TiltEm)*.
 
 This is a complete and total rewrite of the original Tilt'Em mod! The previous version of Tilt’Em attempted to use a mode switching approach to represent tilt between the rotating and non-rotating reference frames used by stock KSP, effectively swapping whether the body was tilted or the planetarium was tilted. Unfortunately, this implementation caused discontinuities at the transition point and dozens of “physics patches” followed suit to attempt to correct this discontinuity.
 
