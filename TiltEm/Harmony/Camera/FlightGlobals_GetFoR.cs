@@ -32,7 +32,12 @@ namespace TiltEm.Harmony
             Vessel vessel = FlightGlobals.ActiveVessel;
             if (vessel == null) return;
 
-            Vector3 north = BodyAxes.WorldNorth(vessel.mainBody);
+            //The System camera mode replaces the body's pole with the normal of the plane its
+            //system orbits in, and only for the orbital frame: the surface frame is about which
+            //way is north on the ground, which the system plane has nothing to say about.
+            Vector3 north = mode == FoRModes.OBT_ABS && FlightCameraFrame.SystemUp
+                ? BodyAxes.WorldSystemNorth(vessel.mainBody)
+                : BodyAxes.WorldNorth(vessel.mainBody);
 
             //Exactly Vector3.up on untilted bodies. Early return keeps the result bit-identical
             //rather than accumulating rounding drift.

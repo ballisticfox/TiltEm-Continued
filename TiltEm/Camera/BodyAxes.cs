@@ -14,9 +14,18 @@ namespace TiltEm
         /// </summary>
         public static Vector3 CelestialNorth(CelestialBody body)
         {
-            if (body == null || !TiltEm.TryGetTilt(body.bodyName, out BodyTilt tilt)) return Vector3.up;
+            return CelestialNormal(body).xzy;
+        }
 
-            return tilt.Tilt.Z.xzy;
+        /// <summary>The body's north pole in the celestial frame, unswizzled.</summary>
+        private static Vector3d CelestialNormal(CelestialBody body)
+        {
+            if (body == null || !TiltEm.TryGetTilt(body.bodyName, out BodyTilt tilt))
+            {
+                return new Vector3d(0.0, 0.0, 1.0);
+            }
+
+            return tilt.Tilt.Z;
         }
 
         /// <summary>
@@ -49,13 +58,30 @@ namespace TiltEm
         /// </summary>
         public static Vector3 SystemNorth(CelestialBody body)
         {
+            return SystemNormal(body).xzy;
+        }
+
+        /// <summary>
+        /// The same normal in world space, for the in-flight cameras. The map camera cancels the
+        /// sky itself and wants the celestial form; see <see cref="SystemNorth"/>.
+        /// </summary>
+        public static Vector3 WorldSystemNorth(CelestialBody body)
+        {
+            return ToWorld(SystemNormal(body));
+        }
+
+        /// <summary>The normal of the system's orbital plane, in the celestial frame, unswizzled.</summary>
+        private static Vector3d SystemNormal(CelestialBody body)
+        {
             CelestialBody star = StarFor(body);
 
-            if (star == null) return Vector3.up;
+            if (star == null) return new Vector3d(0.0, 0.0, 1.0);
 
-            if (TiltEm.TryGetOrbitalPlane(star.bodyName, out BodyTilt plane)) return plane.Tilt.Z.xzy;
-
-            return CelestialNorth(star);
+            //Falls back to the star's own pole, which is right for a system whose planets orbit
+            //in their star's equator and wrong for one that says otherwise - hence the key.
+            return TiltEm.TryGetOrbitalPlane(star.bodyName, out BodyTilt plane)
+                ? plane.Tilt.Z
+                : CelestialNormal(star);
         }
 
         /// <summary>
