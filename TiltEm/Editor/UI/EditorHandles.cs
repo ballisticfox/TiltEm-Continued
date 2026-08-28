@@ -76,29 +76,32 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Global
         public void LateUpdate()
         {
-            BodyEdit edit = BodyEditor.Active;
-
-            if (edit == null || !BodyEditor.Available)
+            using (TiltEmProfiler.EditorHandles.Sample())
             {
-                Stop();
-                return;
+                BodyEdit edit = BodyEditor.Active;
+
+                if (edit == null || !BodyEditor.Available)
+                {
+                    Stop();
+                    return;
+                }
+
+                CelestialBody anchor = AnchorFor(edit);
+
+                if (anchor == null || anchor.scaledBody == null)
+                {
+                    Stop();
+                    return;
+                }
+
+                if (_root == null) Build();
+                if (!ReferenceEquals(anchor, _anchor)) Attach(anchor);
+
+                EditHandle[] active = ActiveHandles(edit);
+
+                Place(edit, anchor, active);
+                Interact(edit, active);
             }
-
-            CelestialBody anchor = AnchorFor(edit);
-
-            if (anchor == null || anchor.scaledBody == null)
-            {
-                Stop();
-                return;
-            }
-
-            if (_root == null) Build();
-            if (!ReferenceEquals(anchor, _anchor)) Attach(anchor);
-
-            EditHandle[] active = ActiveHandles(edit);
-
-            Place(edit, anchor, active);
-            Interact(edit, active);
         }
 
         // ReSharper disable once UnusedMember.Global

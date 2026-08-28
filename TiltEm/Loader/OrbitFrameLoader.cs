@@ -54,7 +54,10 @@ namespace TiltEm
 
             try
             {
-                RebaseChildren(system.rootBody);
+                using (TiltEmProfiler.LoadOrbitFrames.Sample())
+                {
+                    RebaseChildren(system.rootBody);
+                }
             }
             catch (Exception e)
             {

@@ -37,13 +37,16 @@ namespace TiltEm.Harmony
         [HarmonyPostfix]
         private static void PostfixUpdateUIElements(ManeuverNodeEditorTabOrbitAdv __instance)
         {
-            Orbit orbit = OrbitToDisplay(__instance);
+            using (TiltEmProfiler.ManeuverNodeElements.Sample())
+            {
+                Orbit orbit = OrbitToDisplay(__instance);
 
-            if (!ParentRelativeOrbit.TryGetLocalElements(orbit, out OrbitElements local)) return;
+                if (!ParentRelativeOrbit.TryGetLocalElements(orbit, out OrbitElements local)) return;
 
-            SetText(Inclination(__instance), local.Inclination);
-            SetText(Lan(__instance), local.LongitudeOfAscendingNode);
-            SetText(ArgumentOfPeriapsis(__instance), local.ArgumentOfPeriapsis);
+                SetText(Inclination(__instance), local.Inclination);
+                SetText(Lan(__instance), local.LongitudeOfAscendingNode);
+                SetText(ArgumentOfPeriapsis(__instance), local.ArgumentOfPeriapsis);
+            }
         }
 
         /// <summary>Writes a degree-formatted value to a label, null-tolerant.</summary>

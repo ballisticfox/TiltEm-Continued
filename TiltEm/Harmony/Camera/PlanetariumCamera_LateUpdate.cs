@@ -95,12 +95,15 @@ namespace TiltEm.Harmony
         //directly to avoid depending on stock's two terms staying in that order.
         private static Quaternion PivotRotation(float stockAngle, Vector3 stockAxis, PlanetariumCamera camera)
         {
-            if (camera == null || camera.target == null) return Quaternion.AngleAxis(stockAngle, stockAxis);
+            using (TiltEmProfiler.MapCameraPivot.Sample())
+            {
+                if (camera == null || camera.target == null) return Quaternion.AngleAxis(stockAngle, stockAxis);
 
-            //Exactly what stock builds, with the two substitutions above.
-            return (Quaternion)Planetarium.Rotation
-                   * Quaternion.FromToRotation(Vector3.up, SmoothedNorth(camera))
-                   * Quaternion.AngleAxis(camera.camHdg * Mathf.Rad2Deg, stockAxis);
+                //Exactly what stock builds, with the two substitutions above.
+                return (Quaternion)Planetarium.Rotation
+                       * Quaternion.FromToRotation(Vector3.up, SmoothedNorth(camera))
+                       * Quaternion.AngleAxis(camera.camHdg * Mathf.Rad2Deg, stockAxis);
+            }
         }
 
         /// <summary>The eased up axis, so switching mode or focus swings instead of cutting.</summary>

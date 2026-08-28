@@ -29,20 +29,23 @@ namespace TiltEm.Harmony
         [HarmonyPostfix]
         private static void PostfixSetDominantBody(CelestialBody body, CelestialBody __state)
         {
-            CelestialBody outgoing = __state;
-            if (outgoing == null || ReferenceEquals(outgoing, body)) return;
-
-            if (outgoing.inverseRotation)
+            using (TiltEmProfiler.SetDominantBody.Sample())
             {
-                outgoing.inverseRotation = false;
+                CelestialBody outgoing = __state;
+                if (outgoing == null || ReferenceEquals(outgoing, body)) return;
 
-                Debug.Log("[TiltEm]: " + outgoing.bodyName + " still held the rotating frame at handover to "
-                          + (body != null ? body.bodyName : "nothing") + "; cleared it");
+                if (outgoing.inverseRotation)
+                {
+                    outgoing.inverseRotation = false;
+
+                    Debug.Log("[TiltEm]: " + outgoing.bodyName + " still held the rotating frame at handover to "
+                              + (body != null ? body.bodyName : "nothing") + "; cleared it");
+                }
+
+                //Unconditional, and outside the flag check: Kopernicus may have cleared the flag in
+                //its own prefix already, and the anchor still has to follow.
+                PlanetariumAnchor.ReleaseZupAnchor(outgoing);
             }
-
-            //Unconditional, and outside the flag check: Kopernicus may have cleared the flag in
-            //its own prefix already, and the anchor still has to follow.
-            PlanetariumAnchor.ReleaseZupAnchor(outgoing);
         }
     }
 }

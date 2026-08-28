@@ -70,18 +70,21 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Update()
         {
-            BodyEditor.SetTarget(BodyEditTarget.Orbit);
+            using (TiltEmProfiler.EditorOrbitTab.Sample())
+            {
+                BodyEditor.SetTarget(BodyEditTarget.Orbit);
 
-            CelestialBody selected = BodyEditor.SelectedBody();
-            BodyEdit edit = BodyEditor.Active;
+                CelestialBody selected = BodyEditor.SelectedBody();
+                BodyEdit edit = BodyEditor.Active;
 
-            _toggle.Refresh(selected);
-            _frame.Refresh(edit);
+                _toggle.Refresh(selected);
+                _frame.Refresh(edit);
 
-            _status.text = Status(edit, selected);
-            _export.text = _exportButton.Result;
+                _status.text = Status(edit, selected);
+                _export.text = _exportButton.Result;
 
-            Show(edit != null ? edit.Body : selected, edit);
+                Show(edit != null ? edit.Body : selected, edit);
+            }
         }
 
         private void Show(CelestialBody body, BodyEdit edit)
