@@ -35,18 +35,21 @@ namespace TiltEm
         //LateUpdate to sit alongside stock's own line renderers, though nothing here needs it.
         public void LateUpdate()
         {
-            CelestialBody body = DebugOptions.DrawAxes ? TargetBody() : null;
-
-            if (body == null || body.scaledBody == null)
+            using (TiltEmProfiler.AxisRenderer.Sample())
             {
-                Show(false);
-                return;
+                CelestialBody body = DebugOptions.DrawAxes ? TargetBody() : null;
+
+                if (body == null || body.scaledBody == null)
+                {
+                    Show(false);
+                    return;
+                }
+
+                if (!ReferenceEquals(body, _attachedTo)) Attach(body);
+
+                Show(true);
+                UpdateWidth();
             }
-
-            if (!ReferenceEquals(body, _attachedTo)) Attach(body);
-
-            Show(true);
-            UpdateWidth();
         }
 
         public void OnDestroy()

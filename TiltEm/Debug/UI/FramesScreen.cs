@@ -64,23 +64,26 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Update()
         {
-            //OrbitPhysicsManager is a flight-scene object, so there is no dominant body in the
-            //tracking station at all. Falling back to whatever the camera is focused on keeps
-            //the row useful there, marked so it cannot be mistaken for the real thing.
-            CelestialBody dominant = OrbitPhysicsManager.DominantBody;
-            CelestialBody shown = dominant != null ? dominant : MapFocus.Body();
+            using (TiltEmProfiler.DebugUiFrames.Sample())
+            {
+                //OrbitPhysicsManager is a flight-scene object, so there is no dominant body in the
+                //tracking station at all. Falling back to whatever the camera is focused on keeps
+                //the row useful there, marked so it cannot be mistaken for the real thing.
+                CelestialBody dominant = OrbitPhysicsManager.DominantBody;
+                CelestialBody shown = dominant != null ? dominant : MapFocus.Body();
 
-            _dominantBody.text = shown == null
-                ? "none"
-                : dominant != null ? shown.bodyName : shown.bodyName + " (focused)";
+                _dominantBody.text = shown == null
+                    ? "none"
+                    : dominant != null ? shown.bodyName : shown.bodyName + " (focused)";
 
-            //No dominant body means nothing holds the rotating frame, so this reads false rather
-            //than unknown.
-            _inverseRotation.text = (shown != null && shown.inverseRotation).ToString();
+                //No dominant body means nothing holds the rotating frame, so this reads false rather
+                //than unknown.
+                _inverseRotation.text = (shown != null && shown.inverseRotation).ToString();
 
-            _planetariumRotation.text = DebugFormat.Euler(Planetarium.Rotation);
-            _zupRotation.text = DebugFormat.Euler(Planetarium.Zup.Rotation);
-            _inverseRotAngle.text = Planetarium.InverseRotAngle.ToString("F2") + "°";
+                _planetariumRotation.text = DebugFormat.Euler(Planetarium.Rotation);
+                _zupRotation.text = DebugFormat.Euler(Planetarium.Zup.Rotation);
+                _inverseRotAngle.text = Planetarium.InverseRotAngle.ToString("F2") + "°";
+            }
         }
     }
 

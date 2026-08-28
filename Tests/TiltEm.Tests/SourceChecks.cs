@@ -27,6 +27,92 @@ namespace TiltEm.Verification
             TheAnchoredZupIsKeyedToItsOwnBody();
             TheRotatingFrameSurvivesAnSoiChange();
             PrincipiaTurnsTheModOff();
+            ProfilerMarkersAreRaisedWhereTheyWereMeantTo();
+        }
+
+        /// <summary>
+        /// The profiler markers are only worth anything if they are actually emitted and actually
+        /// reached. Neither can be seen from a test that runs the code, so both are pinned here:
+        /// the API that survives compilation, and the entry points that raise a marker.
+        /// </summary>
+        private static void ProfilerMarkersAreRaisedWhereTheyWereMeantTo()
+        {
+            var all = ReadAllModSources();
+            var table = StripComments(Read(Path.Combine("TiltEm", "Profiling", "TiltEmProfiler.cs")));
+
+            // The one that would fail silently. Profiler.BeginSample and ProfilerMarker's Begin
+            // and End all carry [Conditional("ENABLE_PROFILER")], evaluated where the call is
+            // compiled; this assembly does not define it, so those calls compile away to nothing
+            // and a capture comes back empty. Auto() carries no such attribute.
+            Present("-", "markers are raised through ProfilerMarker.Auto", table, @"_marker\.Auto\(\)");
+            Absent("-", "and never through Profiler.BeginSample, which would be compiled out", all,
+                @"Profiler\.BeginSample");
+            Absent("-", "nor through ProfilerMarker.Begin, which would be compiled out", all,
+                @"\.Begin\(\)\s*;");
+
+            var cbUpdate = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Frames", "CelestialBody_CBUpdate.cs")));
+            Absent("-", "CBUpdate leaves its mass and gravity arithmetic unmarked", cbUpdate,
+                @"Sample\(\)[\s\S]{0,80}?UpdateMassAndGravity");
+            Absent("-", "and leaves the solar day walk unmarked", cbUpdate,
+                @"Sample\(\)[\s\S]{0,80}?UpdateSolarDayLength");
+
+            // The shim build of the test project has no Unity assemblies at all, so a marker in
+            // any file it compiles would break CI rather than measure anything.
+            foreach (var shared in new[]
+                     {
+                         Path.Combine("Frames", "TiltEmFrames.cs"),
+                         Path.Combine("Editor", "EditExport.cs"),
+                         Path.Combine("Editor", "HandleAxes.cs"),
+                     })
+            {
+                Absent("-", shared + " stays free of Unity.Profiling, which the shim build cannot resolve",
+                    Read(Path.Combine("TiltEm", shared)), @"Unity\.Profiling|TiltEmProfiler");
+            }
+
+            EveryEntryPointOnTheFrameIsTimed();
+            EveryDeclaredMarkerIsRaised(table, all);
+        }
+
+        /// <summary>Each site that runs per frame or per tick raises its own marker.</summary>
+        private static void EveryEntryPointOnTheFrameIsTimed()
+        {
+            var sites = new[]
+            {
+                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdate" },
+                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdateRotation" },
+                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdatePlanetarium" },
+                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdateOrbit" },
+                new[] { Path.Combine("Harmony", "Frames", "Planetarium_ZupAtT.cs"), "ZupAtT" },
+                new[] { Path.Combine("Harmony", "Camera", "PlanetariumCamera_LateUpdate.cs"), "MapCameraPivot" },
+                new[] { Path.Combine("Harmony", "Camera", "FlightGlobals_GetFoR.cs"), "GetFoR" },
+                new[] { Path.Combine("Debug", "TiltAxisRenderer.cs"), "AxisRenderer" },
+                new[] { Path.Combine("Debug", "PlaneNormalRenderer.cs"), "PlaneNormalRenderer" },
+                new[] { Path.Combine("Editor", "UI", "EditorHandles.cs"), "EditorHandles" },
+            };
+
+            foreach (var site in sites)
+            {
+                var text = StripComments(Read(Path.Combine("TiltEm", site[0])));
+
+                Present("-", site[0] + " raises " + site[1], text,
+                    @"using\s*\(\s*TiltEmProfiler\." + site[1] + @"\.Sample\(\)\s*\)");
+            }
+        }
+
+        /// <summary>Nothing in the table is declared and then never reached.</summary>
+        private static void EveryDeclaredMarkerIsRaised(string table, string allSources)
+        {
+            var declared = Regex.Matches(table, @"TiltEmMarker\s+(\w+)\s*=\s*Marker\(");
+
+            Missing("-", "the marker table declares markers to check", declared.Count > 0);
+
+            foreach (Match marker in declared)
+            {
+                var name = marker.Groups[1].Value;
+
+                Present("-", name + " is raised somewhere", allSources,
+                    @"TiltEmProfiler\." + name + @"\.Sample\(\)");
+            }
         }
 
         /// <summary>

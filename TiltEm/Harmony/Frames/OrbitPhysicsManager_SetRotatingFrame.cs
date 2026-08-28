@@ -19,20 +19,23 @@ namespace TiltEm.Harmony
         [HarmonyPrefix]
         private static void PrefixSetRotatingFrame(OrbitPhysicsManager __instance, bool rotatingFrameState)
         {
-            CelestialBody dominantBody = __instance.dominantBody;
-
-            if (rotatingFrameState && dominantBody != null)
+            using (TiltEmProfiler.SetRotatingFrame.Sample())
             {
-                if (!TiltEm.TryGetTilt(dominantBody.bodyName, out BodyTilt tilt))
+                CelestialBody dominantBody = __instance.dominantBody;
+
+                if (rotatingFrameState && dominantBody != null)
                 {
-                    tilt = TiltEmFrames.Untilted;
+                    if (!TiltEm.TryGetTilt(dominantBody.bodyName, out BodyTilt tilt))
+                    {
+                        tilt = TiltEmFrames.Untilted;
+                    }
+
+                    PlanetariumAnchor.EnsureZupAnchor(dominantBody, tilt);
                 }
 
-                PlanetariumAnchor.EnsureZupAnchor(dominantBody, tilt);
+                RotatingFrameEvents.beforeRotatingFrameChange.Fire(
+                    new GameEvents.HostTargetAction<CelestialBody, bool>(dominantBody, rotatingFrameState));
             }
-
-            RotatingFrameEvents.beforeRotatingFrameChange.Fire(
-                new GameEvents.HostTargetAction<CelestialBody, bool>(dominantBody, rotatingFrameState));
         }
     }
 }

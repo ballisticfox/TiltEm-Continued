@@ -24,15 +24,18 @@ namespace TiltEm.Harmony
         [HarmonyPrefix]
         private static bool PrefixCBUpdate(CelestialBody __instance)
         {
-            //Every body comes through here: once a tilted body holds the rotating frame, stock's
-            //Rz(rot - InverseRotAngle) diverges from transpose(Zup)*Rz(rot) for all bodies.
-            if (!TiltEm.TryGetTilt(__instance.bodyName, out BodyTilt tilt))
+            using (TiltEmProfiler.CbUpdate.Sample())
             {
-                tilt = TiltEmFrames.Untilted;
-            }
+                //Every body comes through here: once a tilted body holds the rotating frame, stock's
+                //Rz(rot - InverseRotAngle) diverges from transpose(Zup)*Rz(rot) for all bodies.
+                if (!TiltEm.TryGetTilt(__instance.bodyName, out BodyTilt tilt))
+                {
+                    tilt = TiltEmFrames.Untilted;
+                }
 
-            CBUpdate(__instance, tilt);
-            return false;
+                CBUpdate(__instance, tilt);
+                return false;
+            }
         }
 
         private static void CBUpdate(CelestialBody body, BodyTilt tilt)
@@ -45,12 +48,18 @@ namespace TiltEm.Harmony
             if (body.rotates && body.rotationPeriod != 0 &&
                 (!body.tidallyLocked || body.orbit != null && body.orbit.period != 0))
             {
-                UpdateRotation(body, tilt);
+                using (TiltEmProfiler.CbUpdateRotation.Sample())
+                {
+                    UpdateRotation(body, tilt);
+                }
             }
 
             if (body.orbitDriver)
             {
-                body.orbitDriver.UpdateOrbit(true);
+                using (TiltEmProfiler.CbUpdateOrbit.Sample())
+                {
+                    body.orbitDriver.UpdateOrbit(true);
+                }
             }
 
             UpdateSolarDayLength(body);
@@ -77,7 +86,10 @@ namespace TiltEm.Harmony
             body.rotationAngle =
                 (body.initialRotation + 360 * body.rotPeriodRecip * Planetarium.GetUniversalTime()) % 360;
 
-            UpdatePlanetariumFrame(body, tilt);
+            using (TiltEmProfiler.CbUpdatePlanetarium.Sample())
+            {
+                UpdatePlanetariumFrame(body, tilt);
+            }
 
             //Same formula in both modes; for the rotating body transpose(Zup) cancels and the
             //frame freezes, matching what stock achieves by not touching it at all.

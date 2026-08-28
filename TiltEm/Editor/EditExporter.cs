@@ -29,8 +29,11 @@ namespace TiltEm
 
             try
             {
-                System.IO.Directory.CreateDirectory(Directory);
-                File.WriteAllText(path, EditExport.Build(Describe(edit), timestamp));
+                using (TiltEmProfiler.EditorExport.Sample())
+                {
+                    System.IO.Directory.CreateDirectory(Directory);
+                    File.WriteAllText(path, EditExport.Build(Describe(edit), timestamp));
+                }
             }
             catch (Exception e)
             {

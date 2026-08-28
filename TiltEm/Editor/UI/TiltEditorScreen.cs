@@ -76,22 +76,25 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Update()
         {
-            //Every frame the tab is up, which is the only time it can be. The editor's camera
-            //pin and its notion of what can be opened both follow whichever tab that is.
-            BodyEditor.SetTarget(BodyEditTarget.Tilt);
+            using (TiltEmProfiler.EditorTiltTab.Sample())
+            {
+                //Every frame the tab is up, which is the only time it can be. The editor's camera
+                //pin and its notion of what can be opened both follow whichever tab that is.
+                BodyEditor.SetTarget(BodyEditTarget.Tilt);
 
-            CelestialBody selected = BodyEditor.SelectedBody();
-            BodyEdit edit = BodyEditor.Active;
+                CelestialBody selected = BodyEditor.SelectedBody();
+                BodyEdit edit = BodyEditor.Active;
 
-            _toggle.Refresh(selected);
-            _frame.Refresh(edit);
-            _mode.Refresh(edit);
+                _toggle.Refresh(selected);
+                _frame.Refresh(edit);
+                _mode.Refresh(edit);
 
-            _status.text = Status(edit);
-            _export.text = _exportButton.Result;
+                _status.text = Status(edit);
+                _export.text = _exportButton.Result;
 
-            if (edit != null) Show(edit.Body, edit.Tilt);
-            else ShowUnedited(selected);
+                if (edit != null) Show(edit.Body, edit.Tilt);
+                else ShowUnedited(selected);
+            }
         }
 
         /// <summary>The open edit's own numbers.</summary>

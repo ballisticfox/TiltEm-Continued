@@ -47,23 +47,26 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Update()
         {
-            Vessel vessel = FlightGlobals.ActiveVessel;
-
-            if (vessel == null)
+            using (TiltEmProfiler.DebugUiVessel.Sample())
             {
-                ShowNoVessel();
-            }
-            else
-            {
-                _orbitMode.text = vessel.orbitDriver.updateMode.ToString();
-                _orbitTransformRotation.text = DebugFormat.Euler(vessel.orbitDriver.driverTransform.rotation);
-                _orbitFrame.text = DebugFormat.Euler(vessel.orbit.OrbitFrame.Rotation);
-                _rotation.text = DebugFormat.Euler(vessel.vesselTransform.rotation);
-                _surfaceRelativeRotation.text = DebugFormat.Euler(vessel.srfRelRotation);
-                _position.text = DebugFormat.Vector(vessel.vesselTransform.position);
-            }
+                Vessel vessel = FlightGlobals.ActiveVessel;
 
-            _frameVelocity.text = DebugFormat.Vector(Krakensbane.GetFrameVelocity());
+                if (vessel == null)
+                {
+                    ShowNoVessel();
+                }
+                else
+                {
+                    _orbitMode.text = vessel.orbitDriver.updateMode.ToString();
+                    _orbitTransformRotation.text = DebugFormat.Euler(vessel.orbitDriver.driverTransform.rotation);
+                    _orbitFrame.text = DebugFormat.Euler(vessel.orbit.OrbitFrame.Rotation);
+                    _rotation.text = DebugFormat.Euler(vessel.vesselTransform.rotation);
+                    _surfaceRelativeRotation.text = DebugFormat.Euler(vessel.srfRelRotation);
+                    _position.text = DebugFormat.Vector(vessel.vesselTransform.position);
+                }
+
+                _frameVelocity.text = DebugFormat.Vector(Krakensbane.GetFrameVelocity());
+            }
         }
 
         private void ShowNoVessel()
