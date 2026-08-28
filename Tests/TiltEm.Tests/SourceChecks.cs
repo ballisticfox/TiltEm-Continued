@@ -309,19 +309,19 @@ namespace TiltEm.Verification
                 @"TryReadPole\(body, ""orbitalPlaneRA"", ""orbitalPlaneDec"",[\s\S]{0,40}?""orbitalPlaneX"", ""orbitalPlaneZ""");
 
             //G8. The stock system needs an explicit plane, because the fallback - the star's own
-            //tilt - is 7.57 degrees away from the plane its planets actually orbit in. Both the
-            //built-in defaults and the shipped example config have to carry it, since a body
-            //may get its plane from either.
-            Present("G8", "the built-in defaults seed a system plane", tiltEmSrc,
-                @"BuildDefaultOrbitalPlanes\(\)");
-            Present("G8", "and seed it for the stock star as the celestial pole", tiltEmSrc,
-                @"\[""Sun""\]\s*=\s*TiltEmFrames\.Untilted");
+            //tilt - is 7.57 degrees away from the plane its planets actually orbit in. Nothing is
+            //built into the mod any more, so the shipped config is the only place it can come
+            //from, and the same goes for every tilt.
+            Absent("G8", "no tilts are built into the mod", tiltEmSrc,
+                @"DefaultLegacyTilts|BuildDefaultTilts|BuildDefaultOrbitalPlanes");
 
             var cfg = Read(Path.Combine("Resources", "TiltEm.cfg"));
             Present("G8", "the shipped config sets the stock system plane", cfg,
                 @"orbitalPlaneRA\s*=\s*0[\s\S]{0,80}?orbitalPlaneDec\s*=\s*90");
             Present("G8", "and sets it on the star, not a planet", cfg,
                 @"@Body\[Sun\][\s\S]{0,600}?orbitalPlaneDec");
+            Present("G8", "and carries the stock tilts, which nothing else does now", cfg,
+                @"@Body\[Kerbin\][\s\S]{0,200}?tiltx\s*=");
 
             //G7. The projection cache KSPCommunityFixes keeps for Vectrosity is filled lazily by
             //whichever LateUpdate draws a line first, and every Vectrosity consumer in KSP draws

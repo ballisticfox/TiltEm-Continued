@@ -16,56 +16,20 @@ namespace TiltEm
         public static HarmonyLib.Harmony HarmonyInstance = new HarmonyLib.Harmony("TiltEm");
 
         /// <summary>
-        /// Built-in tilts, used for any body no config gives a tilt. These are in the legacy Euler
-        /// format the mod originally shipped with and are converted to poles on load, so the
-        /// numbers stay comparable with older versions and with hand-written TiltEm.cfg files.
+        /// Every body's tilt, keyed by name. A body with no tilt in any config has none, and
+        /// CBUpdate treats it as upright.
         /// </summary>
-        private static readonly Dictionary<string, Vector3d> DefaultLegacyTilts = new Dictionary<string, Vector3d>
-        {
-            ["Sun"] = new Vector3d(7.57, 0, 2.12),
-            ["Kerbin"] = new Vector3d(20, 0, 5),
-            ["Mun"] = new Vector3d(15.45, 0, 10.61),
-            ["Minmus"] = new Vector3d(5.87, 0, 12.63),
-            ["Moho"] = new Vector3d(15.14, 0, 30.25),
-            ["Eve"] = new Vector3d(120.4, 0, 35.82),
-            ["Duna"] = new Vector3d(5.93, 0, 3.81),
-            ["Ike"] = new Vector3d(15.41, 0, 4.22),
-            ["Jool"] = new Vector3d(0.54, 0, 1.16),
-            ["Laythe"] = new Vector3d(10.63, 0, 13.45),
-            ["Vall"] = new Vector3d(5.5, 0, 6.12),
-            ["Bop"] = new Vector3d(7.1, 0, 9.4),
-            ["Tylo"] = new Vector3d(17.3, 0, 6),
-            ["Gilly"] = new Vector3d(15.7, 0, 9.69),
-            ["Pol"] = new Vector3d(15.4, 0, 3.12),
-            ["Dres"] = new Vector3d(8.64, 0, 11.48),
-            ["Eeloo"] = new Vector3d(80.63, 0, 12.34),
-        };
-
-        private static readonly Dictionary<string, BodyTilt> TiltDictionary = BuildDefaultTilts();
+        //Nothing is seeded here. The stock system's tilts ship as configuration in
+        //GameData/TiltEm/TiltEm.cfg and are read by TiltLoader like any other pack's, so there is
+        //one place to look up what a body is doing and one place to change it. A built-in table
+        //alongside it could only ever be a second answer to the same question.
+        private static readonly Dictionary<string, BodyTilt> TiltDictionary =
+            new Dictionary<string, BodyTilt>();
 
         /// <summary>Per-star orbital plane normals, as poles, for the map camera's "system up" mode.</summary>
-        private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary = BuildDefaultOrbitalPlanes();
-
-        private static Dictionary<string, BodyTilt> BuildDefaultOrbitalPlanes()
-        {
-            return new Dictionary<string, BodyTilt>
-            {
-                //Kerbol's axis is tilted 7.57 degrees from the celestial pole, but its planets
-                //orbit in the celestial equator, so the system plane normal is the celestial pole.
-                ["Sun"] = TiltEmFrames.Untilted,
-            };
-        }
-
-        private static Dictionary<string, BodyTilt> BuildDefaultTilts()
-        {
-            var tilts = new Dictionary<string, BodyTilt>(DefaultLegacyTilts.Count);
-            foreach (var entry in DefaultLegacyTilts)
-            {
-                tilts[entry.Key] = TiltEmFrames.FromLegacyEuler(entry.Value);
-            }
-
-            return tilts;
-        }
+        //Unseeded for the same reason; the stock star's plane is in that same config.
+        private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary =
+            new Dictionary<string, BodyTilt>();
 
         #endregion
 

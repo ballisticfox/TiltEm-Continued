@@ -16,7 +16,7 @@ namespace TiltEm.Verification
     /// </summary>
     public static class EditorChecks
     {
-        /// <summary>The legacy pairs the mod ships as defaults, which have to survive a round trip.</summary>
+        /// <summary>The legacy pairs the shipped config carries, which have to survive a round trip.</summary>
         private static Vector3d[] ShippedTilts()
         {
             return new[]
@@ -79,9 +79,10 @@ namespace TiltEm.Verification
         }
 
         /// <summary>
-        /// The defaults are the one set of legacy numbers that certainly exist in the wild, and
-        /// Tilt mode shows every one of them back to the player. Anything but an exact round trip
-        /// means opening the editor renumbers a body nobody touched.
+        /// These are the one set of legacy numbers that certainly exist in the wild - Tilt'Em
+        /// ships them as its own configuration - and Tilt mode shows every one of them back to
+        /// the player. Anything but an exact round trip means opening the editor renumbers a body
+        /// nobody touched.
         /// </summary>
         private static void TheShippedTiltsSurviveTheRoundTrip()
         {
