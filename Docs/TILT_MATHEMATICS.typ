@@ -1,5 +1,5 @@
 // The Mathematics of Axial Tilt in Kerbal Space Program
-// Companion to REFERENCE_FRAME_DEFECTS.md and TiltEm/TiltEmFrames.cs
+// Companion to REFERENCE_FRAME_DEFECTS.md and TiltEm/Frames/TiltEmFrames.cs
 //
 // Build:  typst compile Docs/TILT_MATHEMATICS.typ
 
@@ -1109,17 +1109,20 @@ All of them are produced by the shipped `TiltEmFrames`, not computed by hand, an
 be regenerated with
 
 ```text
-dotnet run --project Docs/verification/TiltEmVerify.csproj -- --examples
+dotnet test --filter WorkedExampleTests --logger "console;verbosity=detailed"
 ```
 
-Throughout, the body is Kerbin with the mod's default tilt, its spin phase at the
-moment of interest is $theta_0 = 137.4degree$, and the sky has already been turned by
-$theta_"inv" = 100degree$ when the vessel drops below the threshold.
+Throughout, the body is Kerbin carrying an example tilt of $(20, 0, 5)$, its spin
+phase at the moment of interest is $theta_0 = 137.4degree$, and the sky has already
+been turned by $theta_"inv" = 100degree$ when the vessel drops below the threshold.
 
 == The tilt frame
 
-Kerbin's tilt ships in the older format, as Unity Euler angles $(20, 0, 5)$. Converted
-to a pole by `FromLegacyEuler`:
+The tilt is given in the older of the two configuration formats, as Unity Euler angles
+$(20, 0, 5)$. Nothing is built into the mod: every tilt is read from configuration, and
+the example configuration that ships gives Kerbin a different figure, so the numbers
+below stand on their own rather than describing a particular install. Converted to a
+pole by `FromLegacyEuler`:
 
 #align(center)[
   #table(
