@@ -8,7 +8,8 @@ namespace TiltEm.Verification
     /// Docs/TILT_MATHEMATICS.typ, computed by the shipped TiltEmFrames rather than by hand, so
     /// the document can be checked against the code it describes.
     ///
-    /// Not a check: it asserts nothing and is not counted in the totals. Run with --examples.
+    /// Not a check: it asserts nothing. Driven by WorkedExampleTests; see the command in
+    /// Docs/TILT_MATHEMATICS.typ to print the numbers.
     /// </summary>
     public static class WorkedExamples
     {

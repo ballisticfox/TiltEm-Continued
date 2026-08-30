@@ -14,8 +14,6 @@ namespace TiltEm.Verification
     /// measuring. Everything else is per-scene or per-frame-at-most: the toolbar, the axis
     /// renderer, the camera patches.
     ///
-    /// Run with: dotnet run -c Release --project Docs/verification/TiltEmVerify.csproj -- --bench
-    ///
     /// The numbers come off the desktop CLR, not the Mono runtime Unity 2019.4 ships, so treat
     /// them as a ratio and an order of magnitude rather than as absolute times in game.
     /// </summary>
