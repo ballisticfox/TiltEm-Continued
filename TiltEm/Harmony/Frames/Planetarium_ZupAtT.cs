@@ -30,9 +30,12 @@ namespace TiltEm.Harmony
                 CelestialBody latched = PlanetariumAnchor.ZupAnchorBody;
                 CelestialBody anchorBody = latched ?? body;
 
-                //Untilted anchor body falls through to stock, keeping the path bit-identical rather
-                //than merely equal.
-                if (!TiltEm.TryGetTilt(anchorBody.bodyName, out BodyTilt tilt)) return true;
+                // Use Untilted instead of falling through to stock: stock's Rz spin
+                // assumes +Z, which is wrong once CBUpdate has tilted the anchor.
+                if (!TiltEm.TryGetTilt(anchorBody.bodyName, out BodyTilt tilt))
+                {
+                    tilt = TiltEmFrames.Untilted;
+                }
 
                 Planetarium.CelestialFrame anchor = PlanetariumAnchor.ZupAnchor;
                 double anchorRotationAngle = PlanetariumAnchor.ZupAnchorRotationAngle;
