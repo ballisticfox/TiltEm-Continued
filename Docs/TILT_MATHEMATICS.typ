@@ -1109,7 +1109,7 @@ All of them are produced by the shipped `TiltEmFrames`, not computed by hand, an
 be regenerated with
 
 ```text
-dotnet test --filter WorkedExampleTests --logger "console;verbosity=detailed"
+dotnet test --filter WorkedExampleTests
 ```
 
 Throughout, the body is Kerbin carrying an example tilt of $(20, 0, 5)$, its spin
