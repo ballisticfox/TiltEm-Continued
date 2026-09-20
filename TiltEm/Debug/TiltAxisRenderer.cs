@@ -32,6 +32,11 @@ namespace TiltEm
         private LineRenderer[] _lines;
         private CelestialBody _attachedTo;
 
+        public void Awake()
+        {
+            if (PrincipiaCheck.Installed) Destroy(gameObject);
+        }
+
         //LateUpdate to sit alongside stock's own line renderers, though nothing here needs it.
         public void LateUpdate()
         {

@@ -16,6 +16,12 @@ namespace TiltEm
         // ReSharper disable once UnusedMember.Local
         private void Start()
         {
+            if (PrincipiaCheck.Installed)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
             if (!DebugUi.Initialize()) return;
 
             RectTransform frames = DebugUi.CreateScreen<FramesScreen>("TiltEm_Frames");
