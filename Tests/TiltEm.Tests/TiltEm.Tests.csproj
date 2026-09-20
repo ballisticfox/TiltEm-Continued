@@ -42,13 +42,18 @@
     </Compile>
   </ItemGroup>
 
-  <!-- Stand-in types. Benchmarks needs frame members the shims deliberately omit. -->
+  <!-- Stand-in types. Benchmarks needs frame members the shims deliberately omit, and
+       PrincipiaChecks needs KSP's AssemblyLoader, which they do not have at all. -->
   <ItemGroup Condition=" '$(KspRefs)' != 'real' ">
     <ProjectReference Include="$(MSBuildThisFileDirectory)../KspShims/KspShims.csproj" />
     <Compile Remove="Benchmarks.cs" />
+    <Compile Remove="PrincipiaChecks.cs" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(KspRefs)' == 'real' ">
+    <Compile Include="$(MSBuildThisFileDirectory)../../TiltEm/Loader/PrincipiaCheck.cs">
+      <Link>production/PrincipiaCheck.cs</Link>
+    </Compile>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(KSPManagedPath)\Assembly-CSharp.dll</HintPath>
       <Private>true</Private>

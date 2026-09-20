@@ -1,3 +1,4 @@
+using System.Reflection;
 using UnityEngine;
 
 namespace TiltEm
@@ -10,9 +11,10 @@ namespace TiltEm
     //turns itself off rather than fight over the frames.
     internal static class PrincipiaCheck
     {
-        //The DLL name, not the KSPAssembly name: Principia declares no KSPAssembly attribute,
-        //so KSP falls back to the file name, and that is what its build produces.
-        private const string AdapterDll = "principia.ksp_plugin_adapter";
+        //The assembly's own name, which is not the file's. Principia ships the adapter as
+        //ksp_plugin_adapter.dll, and KSP's dllName comes from the file, so it carries only the
+        //generic half. The name compiled into the assembly is the one thing that says Principia.
+        private const string AdapterAssembly = "principia.ksp_plugin_adapter";
 
         private static bool _resolved;
         private static bool _installed;
@@ -41,13 +43,18 @@ namespace TiltEm
             }
         }
 
-        private static bool Detect()
+        /// <summary>Scans KSP's loaded assemblies for Principia's adapter. Not cached.</summary>
+        //Internal so the test kit can put assemblies in front of it; Installed is what the
+        //mod reads.
+        internal static bool Detect()
         {
             if (AssemblyLoader.loadedAssemblies == null) return false;
 
-            foreach (AssemblyLoader.LoadedAssembly assembly in AssemblyLoader.loadedAssemblies)
+            foreach (AssemblyLoader.LoadedAssembly loaded in AssemblyLoader.loadedAssemblies)
             {
-                if (assembly.dllName == AdapterDll) return true;
+                Assembly assembly = loaded.assembly;
+
+                if (assembly != null && assembly.GetName().Name == AdapterAssembly) return true;
             }
 
             return false;

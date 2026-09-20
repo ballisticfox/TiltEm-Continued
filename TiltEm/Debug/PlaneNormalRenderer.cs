@@ -31,6 +31,11 @@ namespace TiltEm
         private LineRenderer _head;
         private CelestialBody _attachedTo;
 
+        public void Awake()
+        {
+            if (PrincipiaCheck.Installed) Destroy(gameObject);
+        }
+
         //LateUpdate, after ScaledMovement has written the parent's rotation, so the world
         //rotation set here is not stored against a stale one.
         public void LateUpdate()

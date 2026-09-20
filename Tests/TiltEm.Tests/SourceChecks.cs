@@ -124,13 +124,21 @@ namespace TiltEm.Verification
         {
             var check = StripComments(Read(Path.Combine("TiltEm", "Loader", "PrincipiaCheck.cs")));
 
-            // The DLL name, not a KSPAssembly name: Principia declares no KSPAssembly attribute,
-            // so KSP falls back to the file name.
+            // The name compiled into the assembly, principia.ksp_plugin_adapter, is not the
+            // file's. Principia ships the adapter as ksp_plugin_adapter.dll, and KSP's dllName
+            // (and, with no KSPAssembly attribute, its name too) comes from the file. The first
+            // release compared the assembly name against dllName and never matched; that pin
+            // asserted the comparison was there, not that it was against the right thing.
             Present("-", "Principia is detected by its adapter assembly", check,
                 @"""principia\.ksp_plugin_adapter""");
             Present("-", "the detection reads KSP's loaded assemblies", check,
                 @"AssemblyLoader\.loadedAssemblies");
-            Present("-", "and matches on the DLL name", check, @"\.dllName\s*==");
+            Present("-", "and matches on the name compiled into the assembly", check,
+                @"\.GetName\(\)\.Name\s*==");
+            Absent("-", "never on dllName, which is the file's name and has no principia prefix", check,
+                @"\.dllName\s*==");
+            Absent("-", "nor on LoadedAssembly.name, which is dllName unless KSPAssembly says otherwise", check,
+                @"loaded\.name\s*==|assembly\.name\s*==");
 
             var gated = new[]
             {
@@ -140,6 +148,14 @@ namespace TiltEm.Verification
                 // The editor writes poles and orbits straight into the running game, which is the
                 // last thing anyone wants happening under a mod that owns the same frames.
                 new[] { "Editor" + Path.DirectorySeparatorChar + "BodyEditor.cs", @"Begin\(CelestialBody" },
+                // The menu is how a player would find out the mod is still there, and every
+                // readout on it would describe frames Principia has since replaced.
+                new[] { Path.Combine("Debug", "UI", "TiltEmDebugScreens.cs"), @"DebugUi\.Initialize" },
+                // Per-scene components with nothing to do are still components the mod said it
+                // would not run.
+                new[] { Path.Combine("Debug", "TiltAxisRenderer.cs"), @"LateUpdate\(\)" },
+                new[] { Path.Combine("Debug", "PlaneNormalRenderer.cs"), @"LateUpdate\(\)" },
+                new[] { Path.Combine("Editor", "UI", "EditorHandles.cs"), @"LateUpdate\(\)" },
             };
 
             foreach (var entry in gated)

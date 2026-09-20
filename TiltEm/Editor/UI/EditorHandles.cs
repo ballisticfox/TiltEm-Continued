@@ -74,6 +74,12 @@ namespace TiltEm
         }
 
         // ReSharper disable once UnusedMember.Global
+        public void Awake()
+        {
+            if (PrincipiaCheck.Installed) Destroy(gameObject);
+        }
+
+        // ReSharper disable once UnusedMember.Global
         public void LateUpdate()
         {
             using (TiltEmProfiler.EditorHandles.Sample())
