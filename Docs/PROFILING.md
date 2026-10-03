@@ -18,10 +18,8 @@ not.
 | Marker | Site | When it runs |
 |---|---|---|
 | `TiltEm.CBUpdate` | `CelestialBody_CBUpdate` | Every body, every physics tick |
-| `TiltEm.CBUpdate.Rotation` | ↳ `UpdateRotation` | Body frame built from the pole |
-| `TiltEm.CBUpdate.Planetarium` | ↳ `UpdatePlanetariumFrame` | Sky turned while this body holds the rotating frame |
-| `TiltEm.CBUpdate.Orbit` | ↳ `orbitDriver.UpdateOrbit` | Stock's orbit update, which the prefix now calls |
-| `TiltEm.ZupAtT` | `Planetarium_ZupAtT` | Any orbit evaluation at an arbitrary time |
+| `TiltEm.CBUpdate.Planetarium` | ↳ `UpdatePlanetariumFrame` | Once per tick, for the body holding the rotating frame |
+| `TiltEm.ZupAtT` | `Planetarium_ZupAtT` | Orbit evaluation around the body holding the rotating frame |
 | `TiltEm.MapCameraPivot` | `PlanetariumCamera_LateUpdate` | Up to twice a frame with a map camera up |
 | `TiltEm.GetFoR` | `FlightGlobals_GetFoR` | Per frame in flight |
 | `TiltEm.SetDominantBody` | `OrbitPhysicsManager_SetDominantBody` | Sphere-of-influence change |
@@ -39,13 +37,14 @@ not.
 | `TiltEm.Load.OrbitFrames` | `OrbitFrameLoader` | Once, on Kopernicus's finished prefab |
 | `TiltEm.Editor.Export` | `EditExporter` | When the player exports a config |
 
-`TiltEm.ZupAtT` is the highest-frequency marker by a wide margin, and the only
-one that appears under several different parents. Stock reaches it from exactly
-one place, `Orbit.GetOrbitalStateVectorsAtTrueAnomaly` with `worldToLocal` set,
-but that sits under `Orbit.UpdateFromUT` and under
-`GetOrbitalStateVectorsAtUT`, which between them are called by every orbit
-update in the game and by the patched conic solver. Expect thousands of samples
-in a frame where the solver is working.
+`TiltEm.ZupAtT` is the only marker that appears under several different
+parents. Stock reaches it from exactly one place,
+`Orbit.GetOrbitalStateVectorsAtTrueAnomaly` with `worldToLocal` set, but that
+sits under `Orbit.UpdateFromUT` and under `GetOrbitalStateVectorsAtUT`, which
+between them are called by every orbit update in the game and by the patched
+conic solver. Only calls whose reference body holds the rotating frame raise
+it; the rest hand straight back to stock before the marker. Expect thousands of
+samples in a frame where the solver is working below the threshold.
 
 ## Where they appear in a capture
 
@@ -56,9 +55,10 @@ Every entry below was traced through the decompiled 1.12.5 sources.
 **`ScriptRunBehaviourFixedUpdate`**
 
 - `Planetarium.FixedUpdate` → `UpdateCBsRecursive` → `CelestialBody.CBUpdate`.
-  This is where `TiltEm.CBUpdate` and its three children live, once per body per
-  tick, and with them the share of `TiltEm.ZupAtT` that `CBUpdate.Orbit` reaches
-  through `OrbitDriver.UpdateOrbit` → `Orbit.UpdateFromUT`.
+  This is where `TiltEm.CBUpdate` lives, once per body per tick, with
+  `CBUpdate.Planetarium` under it once per tick. Stock's orbit update, and the
+  `TiltEm.ZupAtT` it reaches through `Orbit.UpdateFromUT`, show directly under
+  `TiltEm.CBUpdate`.
 - `OrbitPhysicsManager.FixedUpdate` → `checkReferenceFrame` →
   `TiltEm.SetDominantBody` and `TiltEm.SetRotatingFrame`. A different component
   from Planetarium, so a different line in the capture.
@@ -97,7 +97,9 @@ can appear on a load or a scene change under something other than Planetarium.
 A marker costs about as much as a handful of arithmetic, so timing a handful of
 arithmetic mostly measures the marker. Left bare for that reason:
 
-- `UpdateMassAndGravity` and `UpdateSolarDayLength` inside CBUpdate.
+- Every step inside CBUpdate. It runs per body per tick, and once the frame
+  maths was rewritten for Mono a marker per step cost as much as the steps. Only
+  the once-per-tick sky turn keeps its own.
 - `VectorLineProjectionCache.Invalidate`, which writes one field.
 - `FlightGlobals_SetShipOrbit` and the knowledge base row, both of which run
   once when a player opens something rather than per frame.
@@ -137,6 +139,12 @@ Seventeen calls a frame is the stock system's seventeen bodies, once each per
 physics tick. The whole mod costs about 0.2 ms a frame, near enough 1% of a
 60 fps budget; roughly a third of that is stock's orbit update that the prefix
 now calls on its behalf.
+
+Since this capture, `CBUpdate.Planetarium` moved inside the branch that turns
+the sky, so it counts one call per tick rather than one per body; the 17 above
+mostly timed the marker itself. `CBUpdate.Orbit` and `CBUpdate.Rotation` are
+gone, their cost now counted inside `TiltEm.CBUpdate`, and `ZupAtT` counts only
+rotating reference bodies.
 
 That capture does *not* cover the map view with a maneuver node, where the
 patched conic solver drives `ZupAtT` far harder than flight does, or the

@@ -30,7 +30,7 @@ namespace TiltEm.Harmony
                         tilt = TiltEmFrames.Untilted;
                     }
 
-                    PlanetariumAnchor.EnsureZupAnchor(dominantBody, tilt);
+                    PlanetariumAnchor.EnsureZupAnchor(dominantBody, in tilt);
                 }
 
                 RotatingFrameEvents.beforeRotatingFrameChange.Fire(
