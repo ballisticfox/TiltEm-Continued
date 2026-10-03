@@ -26,6 +26,16 @@ namespace TiltEm
         private static readonly Dictionary<string, BodyTilt> TiltDictionary =
             new Dictionary<string, BodyTilt>();
 
+        /// <summary>Bumped on every tilt write, so anything cached from a tilt can tell it is stale.</summary>
+        public static int TiltVersion { get; private set; }
+
+        //TiltFor's cache, one slot per flightGlobalsIndex plus slot 0 for bodies without one. Each
+        //slot keeps the name it was filled for, so a mismatch refills instead of reading the
+        //wrong body's tilt.
+        private static BodyTilt[] _slotTilts = new BodyTilt[0];
+        private static string[] _slotNames = new string[0];
+        private static int _slotVersion;
+
         /// <summary>Per-star orbital plane normals, as poles, for the map camera's "system up" mode.</summary>
         //Unseeded for the same reason; the stock star's plane is in that same config.
         private static readonly Dictionary<string, BodyTilt> OrbitalPlaneDictionary =
@@ -123,6 +133,7 @@ namespace TiltEm
             }
 
             TiltDictionary[body.bodyName] = tilt;
+            TiltVersion++;
         }
 
         /// <summary>Records a star's orbital plane as a pole direction (the plane's normal).</summary>
@@ -155,6 +166,40 @@ namespace TiltEm
         public static bool TryGetTilt(string bodyName, out BodyTilt tilt)
         {
             return TiltDictionary.TryGetValue(bodyName, out tilt);
+        }
+
+        /// <summary>
+        /// The body's tilt, or <see cref="TiltEmFrames.Untilted"/> when it has none. For the
+        /// per-tick path: no string hashing, and no copy of the 176-byte tilt.
+        /// </summary>
+        internal static ref readonly BodyTilt TiltFor(CelestialBody body)
+        {
+            int slot = Math.Max(body.flightGlobalsIndex + 1, 0);
+            string name = body.bodyName;
+
+            if (_slotVersion != TiltVersion)
+            {
+                Array.Clear(_slotNames, 0, _slotNames.Length);
+                _slotVersion = TiltVersion;
+            }
+
+            if (slot >= _slotNames.Length)
+            {
+                Array.Resize(ref _slotNames, slot + 1);
+                Array.Resize(ref _slotTilts, slot + 1);
+            }
+
+            if (name == null || !ReferenceEquals(_slotNames[slot], name))
+            {
+                if (!TiltDictionary.TryGetValue(name, out _slotTilts[slot]))
+                {
+                    _slotTilts[slot] = TiltEmFrames.Untilted;
+                }
+
+                _slotNames[slot] = name;
+            }
+
+            return ref _slotTilts[slot];
         }
 
         #endregion

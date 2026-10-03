@@ -28,17 +28,13 @@ namespace TiltEm.Harmony
             {
                 //Every body comes through here: once a tilted body holds the rotating frame, stock's
                 //Rz(rot - InverseRotAngle) diverges from transpose(Zup)*Rz(rot) for all bodies.
-                if (!TiltEm.TryGetTilt(__instance.bodyName, out BodyTilt tilt))
-                {
-                    tilt = TiltEmFrames.Untilted;
-                }
-
-                CBUpdate(__instance, tilt);
+                CBUpdate(__instance, in TiltEm.TiltFor(__instance));
                 return false;
             }
         }
 
-        private static void CBUpdate(CelestialBody body, BodyTilt tilt)
+        //BodyTilt is 176 bytes, so it goes down this chain by reference.
+        private static void CBUpdate(CelestialBody body, in BodyTilt tilt)
         {
             body.transformRight = body.transform.right;
             body.transformUp = body.transform.up;
@@ -48,18 +44,14 @@ namespace TiltEm.Harmony
             if (body.rotates && body.rotationPeriod != 0 &&
                 (!body.tidallyLocked || body.orbit != null && body.orbit.period != 0))
             {
-                using (TiltEmProfiler.CbUpdateRotation.Sample())
-                {
-                    UpdateRotation(body, tilt);
-                }
+                UpdateRotation(body, in tilt);
             }
 
+            //Unmarked, like the rest of this body: a marker per step per body costs as much as the
+            //steps. Stock's orbit update counts toward CBUpdate's own time.
             if (body.orbitDriver)
             {
-                using (TiltEmProfiler.CbUpdateOrbit.Sample())
-                {
-                    body.orbitDriver.UpdateOrbit(true);
-                }
+                body.orbitDriver.UpdateOrbit(true);
             }
 
             UpdateSolarDayLength(body);
@@ -75,7 +67,7 @@ namespace TiltEm.Harmony
             body.gravParameter = body.Mass * GravitationalConstant;
         }
 
-        private static void UpdateRotation(CelestialBody body, BodyTilt tilt)
+        private static void UpdateRotation(CelestialBody body, in BodyTilt tilt)
         {
             if (body.tidallyLocked)
             {
@@ -86,15 +78,12 @@ namespace TiltEm.Harmony
             body.rotationAngle =
                 (body.initialRotation + 360 * body.rotPeriodRecip * Planetarium.GetUniversalTime()) % 360;
 
-            using (TiltEmProfiler.CbUpdatePlanetarium.Sample())
-            {
-                UpdatePlanetariumFrame(body, tilt);
-            }
+            UpdatePlanetariumFrame(body, in tilt);
 
             //Same formula in both modes; for the rotating body transpose(Zup) cancels and the
             //frame freezes, matching what stock achieves by not touching it at all.
-            TiltEmFrames.BodyFrame(tilt, body.rotationAngle, Planetarium.Zup, ref body.BodyFrame);
-            body.rotation = body.BodyFrame.Rotation.swizzle;
+            TiltEmFrames.BodyFrame(in tilt, body.rotationAngle, in Planetarium.Zup, ref body.BodyFrame);
+            body.rotation = TiltEmFrames.UnityRotation(body.BodyFrame);
             body.bodyTransform.rotation = body.rotation;
 
             UpdateAngularVelocity(body);
@@ -103,23 +92,29 @@ namespace TiltEm.Harmony
         /// <summary>
         /// Turns the sky while this body holds the rotating frame, or lets it go when it does not.
         /// </summary>
-        private static void UpdatePlanetariumFrame(CelestialBody body, BodyTilt tilt)
+        private static void UpdatePlanetariumFrame(CelestialBody body, in BodyTilt tilt)
         {
             //Not redundant with the flag: stock can leave a body flagged after it stops being
             //dominant, and two flagged bodies would fight over Zup. See MayHoldRotatingFrame.
             if (body.inverseRotation && PlanetariumAnchor.MayHoldRotatingFrame(body))
             {
-                //Driven by elapsed rotation from the anchor, not InverseRotAngle. On the first
-                //tick after the switch the elapsed angle is zero and Zup is continuous.
-                PlanetariumAnchor.EnsureZupAnchor(body, tilt);
+                //Marked here rather than around the call: every other body skips this branch,
+                //and a marker per body would mostly time itself.
+                using (TiltEmProfiler.CbUpdatePlanetarium.Sample())
+                {
+                    //Driven by elapsed rotation from the anchor, not InverseRotAngle. On the first
+                    //tick after the switch the elapsed angle is zero and Zup is continuous.
+                    PlanetariumAnchor.EnsureZupAnchor(body, in tilt);
 
-                Planetarium.Zup = TiltEmFrames.Zup(PlanetariumAnchor.ZupAnchor, tilt,
-                    body.rotationAngle - PlanetariumAnchor.ZupAnchorRotationAngle);
-                Planetarium.Rotation = QuaternionD.Inverse(Planetarium.Zup.Rotation).swizzle;
+                    //The same cached basis ZupAtT reads, so the two agree to the bit.
+                    Planetarium.Zup = PlanetariumAnchor.ZupAt(
+                        body.rotationAngle - PlanetariumAnchor.ZupAnchorRotationAngle);
+                    Planetarium.Rotation = QuaternionD.Inverse(Planetarium.Zup.Rotation).swizzle;
 
-                //Still maintained for anything that reads it, though nothing here builds a frame
-                //from it any more.
-                Planetarium.InverseRotAngle = (body.rotationAngle - body.directRotAngle) % 360;
+                    //Still maintained for anything that reads it, though nothing here builds a
+                    //frame from it any more.
+                    Planetarium.InverseRotAngle = (body.rotationAngle - body.directRotAngle) % 360;
+                }
 
                 return;
             }
@@ -136,11 +131,15 @@ namespace TiltEm.Harmony
         //Getting it wrong left the navball and velocity step on the untilted axis.
         private static void UpdateAngularVelocity(CelestialBody body)
         {
-            double angularSpeed = Math.PI * 2 * body.rotPeriodRecip;
+            double spin = -(Math.PI * 2 * body.rotPeriodRecip);
+            Vector3d pole = body.BodyFrame.Z;
 
-            body.zUpAngularVelocity = body.BodyFrame.Z * -angularSpeed;
-            body.angularVelocity = body.zUpAngularVelocity.xzy;
-            body.angularV = body.angularVelocity.magnitude;
+            //Scalars rather than Vector3d operators, which KSP's Mono does not inline.
+            body.zUpAngularVelocity = new Vector3d(pole.x * spin, pole.y * spin, pole.z * spin);
+            body.angularVelocity = new Vector3d(pole.x * spin, pole.z * spin, pole.y * spin);
+
+            //The pole is a unit vector, so the speed needs no square root.
+            body.angularV = -spin;
         }
 
         /// <summary>Stock's arithmetic, unchanged.</summary>

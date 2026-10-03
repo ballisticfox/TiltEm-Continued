@@ -21,39 +21,47 @@ namespace TiltEm.Harmony
         [HarmonyPrefix]
         private static bool PrefixZupAtT(double UT, CelestialBody body, ref Planetarium.CelestialFrame tempZup)
         {
+            //Most calls hand straight back to stock, so they skip the marker, and a plain reference
+            //test replaces Unity's destroyed-object check; stock reads these fields regardless.
+            if (ReferenceEquals(body, null) || !body.inverseRotation) return true;
+
             using (TiltEmProfiler.ZupAtT.Sample())
             {
-                if (body == null || !body.inverseRotation) return true;
-
                 //Before the first latch there is no anchor to speak for, so the caller's own body is
                 //the best guess - and it is what the anchor is about to be latched to.
                 CelestialBody latched = PlanetariumAnchor.ZupAnchorBody;
                 CelestialBody anchorBody = latched ?? body;
-
-                // Use Untilted instead of falling through to stock: stock's Rz spin
-                // assumes +Z, which is wrong once CBUpdate has tilted the anchor.
-                if (!TiltEm.TryGetTilt(anchorBody.bodyName, out BodyTilt tilt))
-                {
-                    tilt = TiltEmFrames.Untilted;
-                }
-
-                Planetarium.CelestialFrame anchor = PlanetariumAnchor.ZupAnchor;
-                double anchorRotationAngle = PlanetariumAnchor.ZupAnchorRotationAngle;
+                double rotationAngle = PlanetariumAnchor.RotationAngleAt(anchorBody, UT);
 
                 if (latched == null)
                 {
-                    //Without a latched anchor the stored frame and angle are stale and would
-                    //displace on-rails vessels by hundreds of km (PersistenceChecks). Build a
-                    //fresh anchor the way CBUpdate is about to; see section 5 of TILT_MATHEMATICS.pdf.
-                    anchor = TiltEmFrames.AnchorFor(tilt, body.rotationAngle, body.BodyFrame, Planetarium.Zup);
-                    anchorRotationAngle = body.rotationAngle;
+                    tempZup = UnlatchedZup(body, rotationAngle);
+                    return false;
                 }
 
-                double rotationAngle = PlanetariumAnchor.RotationAngleAt(anchorBody, UT);
-
-                tempZup = TiltEmFrames.Zup(anchor, tilt, rotationAngle - anchorRotationAngle);
+                //The closest-approach solver lands here twice per iteration, so this reads the
+                //anchor's cached basis rather than rebuilding it.
+                tempZup = PlanetariumAnchor.ZupAt(rotationAngle - PlanetariumAnchor.ZupAnchorRotationAngle);
                 return false;
             }
+        }
+
+        /// <summary>Zup with no anchor latched yet, from the anchor CBUpdate is about to latch.</summary>
+        //The stored frame and angle are stale here and would displace on-rails vessels by hundreds
+        //of km (PersistenceChecks). See section 5 of TILT_MATHEMATICS.pdf.
+        private static Planetarium.CelestialFrame UnlatchedZup(CelestialBody body, double rotationAngle)
+        {
+            //Untilted rather than stock: stock's Rz spin assumes +Z, which is wrong once CBUpdate
+            //has tilted the anchor.
+            if (!TiltEm.TryGetTilt(body.bodyName, out BodyTilt tilt))
+            {
+                tilt = TiltEmFrames.Untilted;
+            }
+
+            Planetarium.CelestialFrame anchor = TiltEmFrames.AnchorFor(tilt, body.rotationAngle, body.BodyFrame, Planetarium.Zup);
+            double anchorRotationAngle = body.rotationAngle;
+
+            return TiltEmFrames.Zup(anchor, tilt, rotationAngle - anchorRotationAngle);
         }
     }
 }
