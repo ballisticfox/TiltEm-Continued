@@ -157,12 +157,13 @@ namespace TiltEm.Verification
                 return f.Z.z;
             });
 
+            //What ships: PlanetariumAnchor caches the basis between latches, so a call is one spin
+            //and one multiply.
+            Planetarium.CelestialFrame basis = TiltEmFrames.ZupBasis(anchor, tilt);
+
             Bench("Tilt'Em, reference body rotating", i =>
             {
-                BodyTilt t;
-                if (!Tilts.TryGetValue("Kerbin", out t)) t = untilted;
-
-                var f = TiltEmFrames.Zup(anchor, t, i * 1e-4);
+                var f = TiltEmFrames.ZupFromBasis(tilt, basis, i * 1e-4);
                 return f.Z.z;
             });
 

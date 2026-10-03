@@ -18,16 +18,10 @@ namespace TiltEm
         /// <summary>The CBUpdate prefix, which runs for every body on every physics tick.</summary>
         internal static readonly TiltEmMarker CbUpdate = Marker("CBUpdate");
 
-        /// <summary>Building the body frame from its pole, inside CBUpdate.</summary>
-        internal static readonly TiltEmMarker CbUpdateRotation = Marker("CBUpdate.Rotation");
-
-        /// <summary>Turning the sky while this body holds the rotating frame, inside CBUpdate.</summary>
+        /// <summary>Turning the sky, once per tick, for the body holding the rotating frame.</summary>
         internal static readonly TiltEmMarker CbUpdatePlanetarium = Marker("CBUpdate.Planetarium");
 
-        /// <summary>Stock's orbit update, which the prefix took over responsibility for calling.</summary>
-        internal static readonly TiltEmMarker CbUpdateOrbit = Marker("CBUpdate.Orbit");
-
-        /// <summary>The planetarium frame at an arbitrary time.</summary>
+        /// <summary>The planetarium frame at an arbitrary time, while its body is rotating.</summary>
         internal static readonly TiltEmMarker ZupAtT = Marker("ZupAtT");
 
         #endregion

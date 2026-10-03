@@ -49,6 +49,7 @@ namespace TiltEm
     public static class TiltEmFrames
     {
         private const double Rad2Deg = 180.0 / Math.PI;
+        private const double Deg2Rad = Math.PI / 180.0;
 
         /// <summary>An untilted body: pole on +Z, so T is the identity.</summary>
         public static readonly BodyTilt Untilted = FromPole(0.0, 90.0);
@@ -68,9 +69,9 @@ namespace TiltEm
         /// <summary>True when the frame is a usable rotation rather than a zero matrix or NaN.</summary>
         //Planetarium.Zup has no initialiser, so it is all zeros until Planetarium.Awake - but
         //CBUpdate runs before that. Composing transpose(Zup) with zeros yields a zero body frame.
-        public static bool IsUsableRotation(Planetarium.CelestialFrame frame)
+        public static bool IsUsableRotation(in Planetarium.CelestialFrame frame)
         {
-            double lengths = frame.X.sqrMagnitude + frame.Y.sqrMagnitude + frame.Z.sqrMagnitude;
+            double lengths = SquaredLength(frame.X) + SquaredLength(frame.Y) + SquaredLength(frame.Z);
 
             //Three unit axes sum to 3. NaN fails both comparisons, a zero matrix fails the first.
             return lengths > 2.99 && lengths < 3.01;
@@ -79,39 +80,153 @@ namespace TiltEm
         /// <summary>The frame if it is usable, otherwise the identity.</summary>
         //Identity is the right fallback: before the planetarium exists InverseRotAngle is zero,
         //so an identity Zup makes BodyFrame reduce to T * Rz(rotationAngle).
-        public static Planetarium.CelestialFrame OrIdentity(Planetarium.CelestialFrame frame)
+        public static Planetarium.CelestialFrame OrIdentity(in Planetarium.CelestialFrame frame)
         {
             return IsUsableRotation(frame) ? frame : Identity;
         }
 
         #region Frame algebra
 
+        //Written out in scalars: KSP's Mono does not inline Vector3d's operators, so each one is a
+        //call and a struct copy. Sums keep stock's order, so results match LocalToWorld and
+        //WorldToLocal to the bit.
+
         /// <summary>Rz(angle), a pure spin about the celestial +Z axis.</summary>
         public static Planetarium.CelestialFrame Spin(double angle)
         {
-            Planetarium.CelestialFrame frame = default;
-            Planetarium.CelestialFrame.PlanetaryFrame(0.0, 90.0, angle, ref frame);
-            return frame;
+            return Spun(Identity, angle);
+        }
+
+        /// <summary>frame * Rz(angle): the frame turned about its own Z column. Degrees.</summary>
+        //Two trig calls where PlanetaryFrame spends six, and Z carries through exactly.
+        public static Planetarium.CelestialFrame Spun(in Planetarium.CelestialFrame frame, double angle)
+        {
+            double radians = angle * Deg2Rad;
+            double cos = Math.Cos(radians);
+            double sin = Math.Sin(radians);
+
+            Planetarium.CelestialFrame result;
+            result.X = Combine(frame.X, cos, frame.Y, sin);
+            result.Y = Combine(frame.Y, cos, frame.X, -sin);
+            result.Z = frame.Z;
+            return result;
         }
 
         /// <summary>Matrix product a * b: the frame that applies b, then a.</summary>
-        public static Planetarium.CelestialFrame Multiply(Planetarium.CelestialFrame a, Planetarium.CelestialFrame b)
+        public static Planetarium.CelestialFrame Multiply(in Planetarium.CelestialFrame a,
+            in Planetarium.CelestialFrame b)
         {
             Planetarium.CelestialFrame result;
-            result.X = a.LocalToWorld(b.X);
-            result.Y = a.LocalToWorld(b.Y);
-            result.Z = a.LocalToWorld(b.Z);
+            result.X = LocalToWorld(a, b.X);
+            result.Y = LocalToWorld(a, b.Y);
+            result.Z = LocalToWorld(a, b.Z);
+            return result;
+        }
+
+        /// <summary>transpose(a) * b, without building the transpose.</summary>
+        public static Planetarium.CelestialFrame MultiplyTransposed(in Planetarium.CelestialFrame a,
+            in Planetarium.CelestialFrame b)
+        {
+            Planetarium.CelestialFrame result;
+            result.X = WorldToLocal(a, b.X);
+            result.Y = WorldToLocal(a, b.Y);
+            result.Z = WorldToLocal(a, b.Z);
             return result;
         }
 
         /// <summary>Transpose, which for an orthonormal frame is the inverse.</summary>
-        public static Planetarium.CelestialFrame Transpose(Planetarium.CelestialFrame f)
+        public static Planetarium.CelestialFrame Transpose(in Planetarium.CelestialFrame f)
         {
             Planetarium.CelestialFrame result;
             result.X = new Vector3d(f.X.x, f.Y.x, f.Z.x);
             result.Y = new Vector3d(f.X.y, f.Y.y, f.Z.y);
             result.Z = new Vector3d(f.X.z, f.Y.z, f.Z.z);
             return result;
+        }
+
+        /// <summary>frame.Rotation.swizzle, the Unity-space rotation of a frame, bit for bit.</summary>
+        //Stock's QuaternionD(X, Y, Z) constructor and swizzle in one pass, without the two struct
+        //copies. Same branches and operation order, so the result is identical.
+        public static QuaternionD UnityRotation(in Planetarium.CelestialFrame frame)
+        {
+            double xx = frame.X.x, xy = frame.X.y, xz = frame.X.z;
+            double yx = frame.Y.x, yy = frame.Y.y, yz = frame.Y.z;
+            double zx = frame.Z.x, zy = frame.Z.y, zz = frame.Z.z;
+            double x, y, z, w;
+
+            if (xx + yy + zz >= 0.0)
+            {
+                double t = xx + yy + zz + 1.0;
+                double s = 0.5 / Math.Sqrt(t);
+                w = t * s;
+                z = (xy - yx) * s;
+                y = (zx - xz) * s;
+                x = (yz - zy) * s;
+            }
+            else if (xx > yy && xx > zz)
+            {
+                double t = xx - yy - zz + 1.0;
+                double s = 0.5 / Math.Sqrt(t);
+                x = t * s;
+                y = (xy + yx) * s;
+                z = (zx + xz) * s;
+                w = (yz - zy) * s;
+            }
+            else if (yy > zz)
+            {
+                double t = 0.0 - xx + yy - zz + 1.0;
+                double s = 0.5 / Math.Sqrt(t);
+                y = t * s;
+                x = (xy + yx) * s;
+                w = (zx - xz) * s;
+                z = (yz + zy) * s;
+            }
+            else
+            {
+                double t = 0.0 - xx - yy + zz + 1.0;
+                double s = 0.5 / Math.Sqrt(t);
+                z = t * s;
+                w = (xy - yx) * s;
+                x = (zx + xz) * s;
+                y = (yz + zy) * s;
+            }
+
+            return new QuaternionD(0.0 - x, 0.0 - z, 0.0 - y, w);
+        }
+
+        /// <summary>f * r, as CelestialFrame.LocalToWorld computes it.</summary>
+        private static Vector3d LocalToWorld(in Planetarium.CelestialFrame f, in Vector3d r)
+        {
+            Vector3d v;
+            v.x = r.x * f.X.x + r.y * f.Y.x + r.z * f.Z.x;
+            v.y = r.x * f.X.y + r.y * f.Y.y + r.z * f.Z.y;
+            v.z = r.x * f.X.z + r.y * f.Y.z + r.z * f.Z.z;
+            return v;
+        }
+
+        /// <summary>transpose(f) * r, as CelestialFrame.WorldToLocal computes it.</summary>
+        private static Vector3d WorldToLocal(in Planetarium.CelestialFrame f, in Vector3d r)
+        {
+            Vector3d v;
+            v.x = r.x * f.X.x + r.y * f.X.y + r.z * f.X.z;
+            v.y = r.x * f.Y.x + r.y * f.Y.y + r.z * f.Y.z;
+            v.z = r.x * f.Z.x + r.y * f.Z.y + r.z * f.Z.z;
+            return v;
+        }
+
+        /// <summary>a * p + b * q.</summary>
+        private static Vector3d Combine(in Vector3d a, double p, in Vector3d b, double q)
+        {
+            Vector3d v;
+            v.x = a.x * p + b.x * q;
+            v.y = a.y * p + b.y * q;
+            v.z = a.z * p + b.z * q;
+            return v;
+        }
+
+        private static double SquaredLength(in Vector3d v)
+        {
+            return v.x * v.x + v.y * v.y + v.z * v.z;
         }
 
         #endregion
@@ -122,9 +237,11 @@ namespace TiltEm
         /// The body's orientation in the celestial frame: T * Rz(rot + primeMeridian).
         /// Not what goes into CelestialBody.BodyFrame - see <see cref="BodyFrame"/>.
         /// </summary>
-        public static void LocalBodyFrame(BodyTilt tilt, double rot, ref Planetarium.CelestialFrame frame)
+        //PlanetaryFrame(ra, dec, rot) is exactly T * Rz(rot), so spinning the cached T gives the
+        //same frame for a third of the trig.
+        public static void LocalBodyFrame(in BodyTilt tilt, double rot, ref Planetarium.CelestialFrame frame)
         {
-            Planetarium.CelestialFrame.PlanetaryFrame(tilt.PoleRa, tilt.PoleDec, rot + tilt.PrimeMeridian, ref frame);
+            frame = Spun(tilt.Tilt, rot + tilt.PrimeMeridian);
         }
 
         /// <summary>
@@ -137,12 +254,13 @@ namespace TiltEm
         //The transpose(Zup) undoes the sky rotation while a body holds the rotating frame. Stock
         //hides this: Rz(rot - InverseRotAngle) happens to equal transpose(Zup) when every body
         //spins about +Z. A different pole breaks that cancellation.
-        public static void BodyFrame(BodyTilt tilt, double rot, Planetarium.CelestialFrame zup,
+        public static void BodyFrame(in BodyTilt tilt, double rot, in Planetarium.CelestialFrame zup,
             ref Planetarium.CelestialFrame frame)
         {
-            Planetarium.CelestialFrame local = default;
-            LocalBodyFrame(tilt, rot, ref local);
-            frame = Multiply(Transpose(OrIdentity(zup)), local);
+            Planetarium.CelestialFrame local = Spun(tilt.Tilt, rot + tilt.PrimeMeridian);
+
+            //An unusable Zup stands in for the identity, whose transpose leaves local as it is.
+            frame = IsUsableRotation(zup) ? MultiplyTransposed(zup, local) : local;
         }
 
         /// <summary>
@@ -152,17 +270,28 @@ namespace TiltEm
         ///
         /// Sections 5.4-5.5. Driven by elapsed rotation, not Planetarium.InverseRotAngle.
         /// </summary>
-        public static Planetarium.CelestialFrame Zup(Planetarium.CelestialFrame anchor, BodyTilt tilt,
+        public static Planetarium.CelestialFrame Zup(in Planetarium.CelestialFrame anchor, in BodyTilt tilt,
             double elapsedRotation)
         {
-            Planetarium.CelestialFrame spin = Spin(elapsedRotation);
+            return ZupFromBasis(tilt, ZupBasis(anchor, tilt), elapsedRotation);
+        }
 
-            if (!tilt.IsIdentity)
-            {
-                spin = Multiply(tilt.Tilt, Multiply(spin, tilt.TiltTranspose));
-            }
+        /// <summary>
+        /// transpose(T) * anchor, the part of <see cref="Zup"/> that holds still between latches.
+        /// </summary>
+        public static Planetarium.CelestialFrame ZupBasis(in Planetarium.CelestialFrame anchor,
+            in BodyTilt tilt)
+        {
+            Planetarium.CelestialFrame usable = OrIdentity(anchor);
 
-            return Multiply(spin, OrIdentity(anchor));
+            return tilt.IsIdentity ? usable : MultiplyTransposed(tilt.Tilt, usable);
+        }
+
+        /// <summary><see cref="Zup"/> from a basis <see cref="ZupBasis"/> built for the same tilt.</summary>
+        public static Planetarium.CelestialFrame ZupFromBasis(in BodyTilt tilt,
+            in Planetarium.CelestialFrame basis, double elapsedRotation)
+        {
+            return Multiply(Spun(tilt.Tilt, elapsedRotation), basis);
         }
 
         /// <summary>

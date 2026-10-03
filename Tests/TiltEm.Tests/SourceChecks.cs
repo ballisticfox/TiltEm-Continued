@@ -69,6 +69,12 @@ namespace TiltEm.Verification
                     Read(Path.Combine("TiltEm", shared)), @"Unity\.Profiling|TiltEmProfiler");
             }
 
+            // ZupAtT is the most frequent entry point and nearly every call hands back to stock, so
+            // the marker has to sit after that hand-back or it times the common case for nothing.
+            var zupAtT = StripComments(Read(Path.Combine("TiltEm", "Harmony", "Frames", "Planetarium_ZupAtT.cs")));
+            Present("-", "ZupAtT hands back to stock before raising its marker", zupAtT,
+                @"inverseRotation\) return true;[\s\S]*?ZupAtT\.Sample\(\)");
+
             EveryEntryPointOnTheFrameIsTimed();
             EveryDeclaredMarkerIsRaised(table, all);
         }
@@ -79,9 +85,7 @@ namespace TiltEm.Verification
             var sites = new[]
             {
                 new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdate" },
-                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdateRotation" },
                 new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdatePlanetarium" },
-                new[] { Path.Combine("Harmony", "Frames", "CelestialBody_CBUpdate.cs"), "CbUpdateOrbit" },
                 new[] { Path.Combine("Harmony", "Frames", "Planetarium_ZupAtT.cs"), "ZupAtT" },
                 new[] { Path.Combine("Harmony", "Camera", "PlanetariumCamera_LateUpdate.cs"), "MapCameraPivot" },
                 new[] { Path.Combine("Harmony", "Camera", "FlightGlobals_GetFoR.cs"), "GetFoR" },

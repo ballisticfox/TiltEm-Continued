@@ -23,6 +23,34 @@ namespace TiltEm
         /// <summary>The body holding the rotating frame, or null while none does.</summary>
         public static CelestialBody ZupAnchorBody { get; private set; }
 
+        //ZupBasis for the anchor and its body's tilt, which only change on a latch or an edit.
+        //Stale whenever _basisTiltVersion is not TiltEm.TiltVersion; -1 forces a rebuild.
+        private static Planetarium.CelestialFrame _basis;
+        private static BodyTilt _basisTilt;
+        private static int _basisTiltVersion = -1;
+
+        /// <summary>
+        /// Planetarium.Zup once the anchor body has turned <paramref name="elapsedRotation"/>
+        /// degrees past its latch. Only meaningful while a body is latched.
+        /// </summary>
+        public static Planetarium.CelestialFrame ZupAt(double elapsedRotation)
+        {
+            if (_basisTiltVersion != TiltEm.TiltVersion) RebuildBasis();
+
+            return TiltEmFrames.ZupFromBasis(_basisTilt, _basis, elapsedRotation);
+        }
+
+        private static void RebuildBasis()
+        {
+            if (ZupAnchorBody == null || !TiltEm.TryGetTilt(ZupAnchorBody.bodyName, out _basisTilt))
+            {
+                _basisTilt = TiltEmFrames.Untilted;
+            }
+
+            _basis = TiltEmFrames.ZupBasis(ZupAnchor, _basisTilt);
+            _basisTiltVersion = TiltEm.TiltVersion;
+        }
+
         /// <summary>The body's absolute spin phase at <paramref name="ut"/>.</summary>
         //Uses rotationPeriod rather than rotPeriodRecip so it holds before the first CBUpdate.
         public static double RotationAngleAt(CelestialBody body, double ut)
@@ -34,7 +62,7 @@ namespace TiltEm
         /// <summary>Latches the anchor to the body entering its rotating frame. Idempotent.</summary>
         //Kopernicus sets inverseRotation without going through setRotatingFrame, so the prefix
         //does not always fire - both prefix and CBUpdate call this.
-        public static void EnsureZupAnchor(CelestialBody body, BodyTilt tilt)
+        public static void EnsureZupAnchor(CelestialBody body, in BodyTilt tilt)
         {
             if (ReferenceEquals(ZupAnchorBody, body)) return;
 
@@ -45,6 +73,7 @@ namespace TiltEm
             ZupAnchor = TiltEmFrames.AnchorFor(tilt, body.rotationAngle, body.BodyFrame, Planetarium.Zup);
             ZupAnchorRotationAngle = body.rotationAngle;
             ZupAnchorBody = body;
+            _basisTiltVersion = -1;
         }
 
         /// <summary>Drops the anchor when a body leaves its rotating frame.</summary>
@@ -99,6 +128,7 @@ namespace TiltEm
             //handle writes the first and CBUpdate has yet to recompute the second, so the stored
             //angle is a tick stale and the sky would take up that difference.
             ZupAnchorRotationAngle = RotationAngleAt(body, Planetarium.GetUniversalTime());
+            _basisTiltVersion = -1;
         }
 
         /// <summary>Drops the anchor so the next rotating body re-latches.</summary>
@@ -108,6 +138,7 @@ namespace TiltEm
             ZupAnchorBody = null;
             ZupAnchorRotationAngle = 0;
             ZupAnchor = TiltEmFrames.OrIdentity(Planetarium.Zup);
+            _basisTiltVersion = -1;
         }
     }
 }
